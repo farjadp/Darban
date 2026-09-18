@@ -1,18 +1,21 @@
 import { createHash, createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, verifySession, verifyTelegramLogin } from "./auth-crypto";
-import { assertSameOrigin, getAdmin, requireAdmin, SESSION_COOKIE, NONCE_COOKIE } from "./auth";
+import { assertSameOrigin, authConfig, getAdmin, getUser, requireAdmin, requireUser, SESSION_COOKIE, NONCE_COOKIE } from "./auth";
 import { POST as login } from "../app/api/auth/telegram/route";
 import { POST as nonce } from "../app/api/auth/nonce/route";
 import { POST as logout } from "../app/api/auth/logout/route";
 
-const mocks = vi.hoisted(() => ({ cookies: new Map<string, string>(), receipt: vi.fn() }));
+const mocks = vi.hoisted(() => ({ cookies: new Map<string, string>(), receipt: vi.fn(), account: vi.fn(), upsert: vi.fn(), subscription: vi.fn(), seed: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: (key: string) => {
   const value = mocks.cookies.get(key);
   return value ? { value } : undefined;
 } }) }));
 vi.mock("next/navigation", () => ({ redirect: (path: string) => { throw new Error(`redirect:${path}`); } }));
-vi.mock("./db", () => ({ db: { loginReceipt: { create: mocks.receipt } } }));
+vi.mock("./db", () => {
+  const db = { loginReceipt: { create: mocks.receipt }, account: { findUnique: mocks.account, upsert: mocks.upsert }, subscription: { upsert: mocks.subscription }, plan: { createMany: mocks.seed } };
+  return { db: { ...db, $transaction: async (work: (tx: typeof db) => unknown) => work(db) } };
+});
 
 const token = "123456:telegram-test-token";
 const secret = "a-secure-test-secret-with-at-least-32-bytes";
@@ -39,6 +42,10 @@ beforeEach(() => {
   vi.stubEnv("APP_URL", "https://guard.example");
   mocks.cookies.clear();
   mocks.receipt.mockReset().mockResolvedValue({});
+  mocks.account.mockReset().mockResolvedValue({ id: "123456", name: "مدیر", locale: "fa", status: "ACTIVE" });
+  mocks.upsert.mockReset().mockImplementation(async ({ create }) => create);
+  mocks.subscription.mockReset().mockResolvedValue({ planId: "free", status: "FREE" });
+  mocks.seed.mockReset().mockResolvedValue({ count: 0 });
 });
 
 describe("Telegram signature verification", () => {
@@ -98,12 +105,29 @@ describe("signed sessions", () => {
 });
 
 describe("admin and origin protection", () => {
+  it("checks durable customer status on every request without granting platform role", async () => {
+    mocks.cookies.set(SESSION_COOKIE, createSession({ id: "222222", name: "Old name" }, secret));
+    mocks.account.mockResolvedValue({ id: "222222", name: "Customer", locale: "en", status: "ACTIVE" });
+    expect(await getUser()).toEqual({ id: "222222", name: "Customer", locale: "en", isPlatformAdmin: false });
+    expect(await getAdmin()).toBeNull();
+    mocks.account.mockResolvedValue({ id: "222222", status: "SUSPENDED" });
+    expect(await getUser()).toBeNull();
+    await expect(requireUser("en")).rejects.toThrow("redirect:/en/login");
+    mocks.account.mockResolvedValue(null);
+    expect(await getUser()).toBeNull();
+  });
+  it("allows an empty platform allowlist but rejects malformed configured entries", () => {
+    vi.stubEnv("GUARD_ADMIN_IDS", "");
+    expect(authConfig().adminIds.size).toBe(0);
+    vi.stubEnv("GUARD_ADMIN_IDS", "123,invalid");
+    expect(() => authConfig()).toThrow();
+  });
   it("checks the allowlist on every request and redirects pages only", async () => {
     mocks.cookies.set(SESSION_COOKIE, createSession({ id: "123456", name: "مدیر" }, secret));
     expect(await getAdmin()).toEqual({ id: "123456", name: "مدیر" });
     vi.stubEnv("GUARD_ADMIN_IDS", "987654");
     expect(await getAdmin()).toBeNull();
-    await expect(requireAdmin()).rejects.toThrow("redirect:/login");
+    await expect(requireAdmin()).rejects.toThrow("redirect:/fa/login");
   });
   it("fails closed when required configuration is absent", async () => {
     mocks.cookies.set(SESSION_COOKIE, createSession({ id: "123456", name: "مدیر" }, secret));
@@ -150,11 +174,20 @@ describe("authentication endpoints", () => {
     expect(response.status).toBe(403);
     expect(response.headers.get("set-cookie") ?? "").not.toContain(`${SESSION_COOKIE}=`);
   });
-  it("denies non-admins without recording a receipt", async () => {
+  it("registers a non-platform customer with a verified signature", async () => {
+    vi.stubEnv("GUARD_ADMIN_IDS", "");
     mocks.cookies.set(NONCE_COOKIE, "a".repeat(64));
+    const response = await login(request("telegram", { nonce: "a".repeat(64), locale: "en", data: signed({ id: 222222, auth_date: Math.floor(Date.now() / 1000) }) }));
+    expect(response.status).toBe(200);
+    expect(mocks.receipt).toHaveBeenCalledOnce();
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ id: "222222", locale: "en", status: "ACTIVE" }), update: expect.not.objectContaining({ status: "ACTIVE" }) }));
+  });
+  it("does not unsuspend an account on login", async () => {
+    mocks.cookies.set(NONCE_COOKIE, "a".repeat(64));
+    mocks.upsert.mockResolvedValue({ id: "222222", status: "SUSPENDED" });
     const response = await login(request("telegram", { nonce: "a".repeat(64), data: signed({ id: 222222, auth_date: Math.floor(Date.now() / 1000) }) }));
     expect(response.status).toBe(403);
-    expect(mocks.receipt).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
   it("fails closed when replay storage is unavailable", async () => {
     mocks.cookies.set(NONCE_COOKIE, "a".repeat(64));

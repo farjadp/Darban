@@ -103,12 +103,27 @@ Until every variable is set, `/login` stays up and lists exactly which ones are 
 | `DATABASE_URL` | PostgreSQL connection string. |
 | `GUARD_BOT_TOKEN` | Bot token from BotFather. |
 | `GUARD_BOT_USERNAME` | Bot username without `@`. |
-| `GUARD_ADMIN_IDS` | Comma-separated Telegram user IDs allowed into the panel. |
+| `GUARD_ADMIN_IDS` | Comma-separated Telegram user IDs of platform administrators: the people who edit plans, suspend accounts and use the bot's private commands. Leave empty to run without an admin area. |
 | `GUARD_WEBHOOK_SECRET` | 32–256 characters, `A–Z a–z 0–9 _ -`. Sent by Telegram on every update. |
 | `AUTH_SESSION_SECRET` | At least 32 bytes. Signs the admin session cookie. |
 | `GUARD_TELEGRAM_TIMEOUT_MS` | Telegram request timeout. Default `10000`. |
 
-Panel access needs both: the ID must be listed in `GUARD_ADMIN_IDS` **and** the account must still be an administrator of that chat in Telegram. The second check runs live, so revoking someone in Telegram revokes them here.
+Any Telegram account can sign in and gets a free workspace. Managing a chat needs two things: a registered, non-suspended account **and** live administrator rights in that chat in Telegram. The second check runs on every request, so revoking someone in Telegram revokes them here. `GUARD_ADMIN_IDS` only unlocks the platform area at `/admin`.
+
+### 🗺 Routes
+
+Everything is served under `/fa` and `/en`; the bare origin redirects to Persian.
+
+| Path | What |
+|---|---|
+| `/`, `/features`, `/pricing`, `/guide` | Public site |
+| `/login` | Telegram sign-in; creates the account on first visit |
+| `/portal` | A customer's chats, posts, alerts and rules |
+| `/portal/subscription`, `/portal/account` | Plan requests and profile |
+| `/admin` | Platform administrators: customers, plans, requests, audit log |
+| `/preview`, `/preview/admin` | Read-only tour with sample data, no sign-in |
+
+Plans live in the database (`free` and `pro`, seeded at $5 monthly, $55 annual, $21 first year). Choosing a plan records a request; nothing is charged and no paid access is activated until a payment provider is connected.
 
 ### 💬 Bot commands
 
@@ -210,12 +225,27 @@ npm run guard:setup -- --apply
 | `DATABASE_URL` | رشته‌ی اتصال PostgreSQL. |
 | `GUARD_BOT_TOKEN` | توکن بات از BotFather. |
 | `GUARD_BOT_USERNAME` | نام کاربری بات، بدون `@`. |
-| `GUARD_ADMIN_IDS` | شناسه‌های عددی تلگرام که اجازه‌ی ورود به پنل دارند، با ویرگول لاتین جدا شده. |
+| `GUARD_ADMIN_IDS` | شناسه‌های عددی تلگرامِ مدیران سامانه، با ویرگول لاتین جدا شده: کسانی که طرح‌ها را ویرایش می‌کنند، حساب‌ها را تعلیق می‌کنند و دستورهای خصوصی بات را دارند. خالی بماند، بخش مدیریت غیرفعال است. |
 | `GUARD_WEBHOOK_SECRET` | بین ۳۲ تا ۲۵۶ نویسه از `A–Z a–z 0–9 _ -`. تلگرام آن را روی هر آپدیت می‌فرستد. |
 | `AUTH_SESSION_SECRET` | دست‌کم ۳۲ بایت. کوکی نشست مدیر را امضا می‌کند. |
 | `GUARD_TELEGRAM_TIMEOUT_MS` | مهلت درخواست به تلگرام. پیش‌فرض `10000`. |
 
-دسترسی به پنل هر دو شرط را می‌خواهد: شناسه باید در `GUARD_ADMIN_IDS` باشد **و** حساب باید همان لحظه در تلگرام هنوز مدیر آن چت باشد. شرط دوم زنده بررسی می‌شود، پس گرفتن دسترسی کسی در تلگرام، دسترسی‌اش را اینجا هم می‌گیرد.
+هر حساب تلگرام می‌تواند وارد شود و یک فضای کار رایگان می‌گیرد. مدیریت یک چت دو شرط دارد: حساب ثبت‌شده و تعلیق‌نشده **و** دسترسی زنده‌ی مدیریت در همان چت در تلگرام. شرط دوم در هر درخواست بررسی می‌شود، پس گرفتن دسترسی کسی در تلگرام، دسترسی‌اش را اینجا هم می‌گیرد. `GUARD_ADMIN_IDS` فقط بخش مدیریت سامانه در `/admin` را باز می‌کند.
+
+### 🗺 مسیرها
+
+همه‌چیز زیر `/fa` و `/en` است؛ آدرس خالی به فارسی می‌رود.
+
+| مسیر | چه چیزی |
+|---|---|
+| `/`، `/features`، `/pricing`، `/guide` | سایت عمومی |
+| `/login` | ورود با تلگرام؛ حساب در اولین ورود ساخته می‌شود |
+| `/portal` | چت‌ها، پست‌ها، هشدارها و قواعد یک مشتری |
+| `/portal/subscription`، `/portal/account` | درخواست طرح و مشخصات حساب |
+| `/admin` | مدیران سامانه: مشتری‌ها، طرح‌ها، درخواست‌ها، گزارش مدیریت |
+| `/preview`، `/preview/admin` | گشت فقط‌خواندنی با داده‌ی نمونه، بدون ورود |
+
+طرح‌ها در پایگاه داده‌اند (`free` و `pro`، با مقدار اولیه‌ی ۵ دلار ماهانه، ۵۵ دلار سالانه و ۲۱ دلار سال اول). انتخاب طرح فقط یک درخواست ثبت می‌کند؛ تا وصل‌شدن درگاه پرداخت، مبلغی گرفته نمی‌شود و دسترسی پولی فعال نمی‌شود.
 
 ### 💬 دستورهای بات
 

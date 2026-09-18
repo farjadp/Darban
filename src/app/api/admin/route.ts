@@ -1,4 +1,4 @@
-import { assertSameOrigin, AuthError, getAdmin } from "@/lib/auth";
+import { assertSameOrigin, AuthError, getUser } from "@/lib/auth";
 import { GuardError } from "@/lib/channel-guard/access";
 import { connectChat, moderateMember, publishGuardPost, reviewAlert, saveSettings, syncPost } from "@/lib/channel-guard/actions";
 import { adminInput } from "@/lib/channel-guard/input";
@@ -37,7 +37,7 @@ async function readBody(request: Request): Promise<unknown> {
 export async function POST(request: Request) {
   const headers = { "Cache-Control": "no-store" };
   try {
-    const admin = await getAdmin();
+    const admin = await getUser();
     if (!admin) throw new AuthError(401, "ابتدا وارد شوید.");
     assertSameOrigin(request);
     const parsed = adminInput.safeParse(await readBody(request));

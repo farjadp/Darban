@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { safeReturnPath, text, type Locale } from "@/lib/i18n";
 
-export function TelegramLogin({ botUsername }: { botUsername: string }) {
+export function TelegramLogin({ botUsername, locale = "fa", returnPath }: { botUsername: string; locale?: Locale; returnPath?: string }) {
   const router = useRouter();
   const container = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
@@ -19,46 +20,28 @@ export function TelegramLogin({ botUsername }: { botUsername: string }) {
     const callbacks = window as unknown as Record<string, unknown>;
     let pending = false;
     let loadTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const fail = (message: string) => {
-      if (!controller.signal.aborted) {
-        setError(message);
-        setStatus("error");
-      }
+    const fail = (message?: unknown) => {
+      if (controller.signal.aborted) return;
+      const fallback = text(locale,"ورود انجام نشد. اتصال را بررسی و دوباره تلاش کنید.","Sign-in could not be completed. Check your connection and try again.");
+      setError(typeof message === "string" && !(locale === "en" && /[\u0600-\u06ff]/.test(message)) ? message : fallback);
+      setStatus("error");
     };
-
     async function initialize() {
       try {
-        const response = await fetch("/api/auth/nonce", {
-          method: "POST", credentials: "same-origin", cache: "no-store",
-          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
-        });
+        const response = await fetch("/api/auth/nonce", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "x-darban-locale": locale }, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
         const payload = await response.json();
-        if (!response.ok || typeof payload.nonce !== "string" || !/^[a-f0-9]{64}$/.test(payload.nonce)) {
-          fail(typeof payload.error === "string" ? payload.error : "آماده‌سازی ورود انجام نشد. دوباره تلاش کنید.");
-          return;
-        }
+        if (!response.ok || typeof payload.nonce !== "string" || !/^[a-f0-9]{64}$/.test(payload.nonce)) { fail(payload.error); return; }
         if (controller.signal.aborted) return;
         callbacks[callbackName] = async (data: unknown) => {
           if (pending || controller.signal.aborted) return;
           pending = true;
           setStatus("submitting");
           try {
-            const result = await fetch("/api/auth/telegram", {
-              method: "POST", credentials: "same-origin", cache: "no-store",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ nonce: payload.nonce, data }),
-              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
-            });
+            const result = await fetch("/api/auth/telegram", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "x-darban-locale": locale }, body: JSON.stringify({ nonce: payload.nonce, data, locale }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
             const body = await result.json();
-            if (!result.ok || body.ok !== true) {
-              fail(typeof body.error === "string" ? body.error : "ورود انجام نشد. دوباره تلاش کنید.");
-              return;
-            }
-            if (!controller.signal.aborted) { router.replace("/"); router.refresh(); }
-          } catch {
-            fail("ارتباط با سرویس ورود برقرار نشد. دوباره تلاش کنید.");
-          }
+            if (!result.ok || body.ok !== true) { fail(body.error); return; }
+            if (!controller.signal.aborted) { router.replace(safeReturnPath(returnPath,locale)); router.refresh(); }
+          } catch { fail(); }
         };
         const script = document.createElement("script");
         script.src = "https://telegram.org/js/telegram-widget.js?22";
@@ -66,51 +49,22 @@ export function TelegramLogin({ botUsername }: { botUsername: string }) {
         script.setAttribute("data-telegram-login", botUsername);
         script.setAttribute("data-size", "large");
         script.setAttribute("data-userpic", "false");
+        script.setAttribute("data-lang", locale);
         script.setAttribute("data-onauth", `${callbackName}(user)`);
-        script.onload = () => {
-          clearTimeout(loadTimer);
-          if (!controller.signal.aborted) setStatus("ready");
-        };
-        script.onerror = () => {
-          clearTimeout(loadTimer);
-          fail("ابزار ورود تلگرام بارگذاری نشد. اتصال اینترنت را بررسی کنید.");
-        };
-        loadTimer = setTimeout(() => fail("بارگذاری تلگرام طول کشید. دوباره تلاش کنید."), 15_000);
+        script.onload = () => { clearTimeout(loadTimer); if (!controller.signal.aborted) setStatus("ready"); };
+        script.onerror = () => { clearTimeout(loadTimer); fail(text(locale,"ابزار ورود تلگرام بارگذاری نشد. اتصال اینترنت را بررسی کنید.","The Telegram sign-in widget did not load. Check your connection.")); };
+        loadTimer = setTimeout(() => fail(text(locale,"بارگذاری تلگرام طول کشید. دوباره تلاش کنید.","Telegram took too long to load. Please try again.")),15000);
         target.replaceChildren(script);
-      } catch {
-        fail("ارتباط با سرویس ورود برقرار نشد. دوباره تلاش کنید.");
-      }
+      } catch { fail(); }
     }
-
     void initialize();
-    return () => {
-      controller.abort();
-      clearTimeout(loadTimer);
-      delete callbacks[callbackName];
-      target.replaceChildren();
-    };
-  }, [attempt, botUsername, validUsername, router]);
+    return () => { controller.abort(); clearTimeout(loadTimer); delete callbacks[callbackName]; target.replaceChildren(); };
+  }, [attempt, botUsername, validUsername, router, locale, returnPath]);
 
-  if (!validUsername) {
-    return <p role="alert" className="text-sm leading-7 text-red-700">تنظیمات ورود تلگرام کامل نیست. با مدیر سامانه تماس بگیرید.</p>;
-  }
-
-  return (
-    <div className="space-y-4" dir="rtl" aria-busy={status === "loading" || status === "submitting"}>
-      <div ref={container} className={status === "error" || status === "submitting" ? "hidden" : "flex min-h-12 items-center justify-center"} />
-      <p role="status" aria-live="polite" className="text-center text-sm leading-7 text-stone-600">
-        {status === "loading" ? "در حال آماده‌سازی ورود تلگرام…" : status === "submitting" ? "در حال بررسی دسترسی…" : status === "ready" ? "برای ورود، هویت خود را در تلگرام تأیید کنید." : ""}
-      </p>
-      {status === "error" && (
-        <div className="space-y-3">
-          <p role="alert" className="text-sm leading-7 text-red-700">{error}</p>
-          <button type="button" className="min-h-11 rounded-lg border border-stone-400 px-4 py-2 text-sm font-medium text-stone-900 transition-colors hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-stone-900" onClick={() => {
-            setError("");
-            setStatus("loading");
-            setAttempt((value) => value + 1);
-          }}>تلاش دوباره</button>
-        </div>
-      )}
-    </div>
-  );
+  if (!validUsername) return <p role="alert" className="text-sm leading-7 text-red-800">{text(locale,"ورود تلگرام هنوز پیکربندی نشده است.","Telegram sign-in is not configured yet.")}</p>;
+  return <div className="space-y-4" aria-busy={status === "loading" || status === "submitting"}>
+    <div ref={container} className={status === "error" || status === "submitting" ? "hidden" : "flex min-h-12 items-center justify-center"} />
+    <p role="status" aria-live="polite" className="text-center text-sm leading-7 text-muted">{status === "loading" ? text(locale,"در حال آماده‌سازی ورود تلگرام…","Preparing Telegram sign-in…") : status === "submitting" ? text(locale,"در حال بررسی حساب…","Verifying your account…") : status === "ready" ? text(locale,"برای ادامه، حساب خود را در تلگرام تأیید کنید.","Confirm your Telegram account to continue.") : ""}</p>
+    {status === "error" && <div className="space-y-3"><p role="alert" className="text-sm leading-7 text-red-800">{error}</p><button type="button" className="min-h-11 rounded-lg border border-line px-4 py-2 text-sm font-medium hover:bg-canvas" onClick={() => { setError(""); setStatus("loading"); setAttempt(value => value+1); }}>{text(locale,"تلاش دوباره","Try again")}</button></div>}
+  </div>;
 }

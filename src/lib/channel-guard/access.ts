@@ -4,14 +4,21 @@ import { botId, getMember, type ChatMember } from "./telegram";
 export class GuardError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
+/** Platform operators named in GUARD_ADMIN_IDS. Only the bot's private commands still key off this. */
 export function allowedAdmin(id: string) {
   return (process.env.GUARD_ADMIN_IDS ?? "").split(",").map(s => s.trim()).filter(Boolean).includes(id);
 }
 export function hasAdminRights(member: ChatMember) {
   return member.status === "creator" || member.status === "administrator";
 }
+/** A registered, non-suspended customer. Checked before any Telegram call so a suspended account never reaches the API. */
+export async function assertActiveAccount(actorId: string) {
+  const account = await db.account.findUnique({ where: { id: actorId } });
+  if (!account || account.status !== "ACTIVE") throw new GuardError("دسترسی مجاز نیست.", 403);
+  return account;
+}
 export async function assertTelegramAdmin(chatId: string, actorId: string) {
-  if (!allowedAdmin(actorId)) throw new GuardError("دسترسی مجاز نیست.", 403);
+  await assertActiveAccount(actorId);
   const member = await getMember(chatId, actorId);
   if (!hasAdminRights(member)) throw new GuardError("در این چت دسترسی ادمین ندارید.", 403);
   return member;

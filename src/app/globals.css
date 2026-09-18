@@ -2,19 +2,28 @@
 
 @theme inline {
   --font-sans: "Vazirmatn", sans-serif;
+  --color-canvas: #f6f7f4;
+  --color-surface: #ffffff;
+  --color-ink: #17271f;
+  --color-muted: #526259;
+  --color-line: #dce3dd;
+  --color-forest: #174d38;
+  --color-mint: #d6f2e0;
 }
 
 @layer base {
-  html { color-scheme: light; }
+  html { color-scheme: light; scroll-behavior: smooth; scrollbar-color: #91a69a #f6f7f4; }
   body { margin: 0; }
   button, input, select, textarea { font: inherit; }
   button:not(:disabled), summary { cursor: pointer; }
-  :focus-visible { outline: 2px solid #18181b; outline-offset: 4px; }
-  ::selection { background: #27272a; color: #fff; }
-  input, textarea { caret-color: #18181b; }
+  :focus-visible { outline: 2px solid #174d38; outline-offset: 4px; }
+  ::selection { background: #d6f2e0; color: #17271f; }
+  input, textarea { caret-color: #174d38; }
   bdi { unicode-bidi: isolate; }
   h1, h2, h3 { text-wrap: balance; }
+  [lang="fa"] { letter-spacing: normal; }
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 }

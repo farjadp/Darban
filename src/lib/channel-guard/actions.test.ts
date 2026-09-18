@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   db: {
+    account: { findUnique: vi.fn() },
     chatAdmin: { findUnique: vi.fn(), upsert: vi.fn() },
     guardChat: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     guardEvent: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -13,11 +14,11 @@ const mocks = vi.hoisted(() => ({
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
   },
-  telegram: vi.fn(), getMember: vi.fn(), getAdmin: vi.fn(),
+  telegram: vi.fn(), getMember: vi.fn(), getUser: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("./telegram", async (original) => ({ ...await original<typeof import("./telegram")>(), telegram: mocks.telegram, getMember: mocks.getMember }));
-vi.mock("@/lib/auth", async (original) => ({ ...await original<typeof import("@/lib/auth")>(), getAdmin: mocks.getAdmin }));
+vi.mock("@/lib/auth", async (original) => ({ ...await original<typeof import("@/lib/auth")>(), getUser: mocks.getUser }));
 
 import { connectChat, moderateMember, publishGuardPost, saveSettings, reviewAlert, syncPost } from "./actions";
 import { TelegramError } from "./telegram";
@@ -38,7 +39,7 @@ beforeEach(() => {
   vi.stubEnv("GUARD_BOT_TOKEN", "99:token");
   vi.stubEnv("APP_URL", "https://guard.example");
   events.clear(); posts.clear();
-  mocks.getAdmin.mockResolvedValue({ id: actorId, name: "Admin" });
+  mocks.getUser.mockResolvedValue({ id: actorId, name: "Admin" });
   const locks = new Map<string, Promise<void>>();
   mocks.db.$transaction.mockImplementation(async (work: (tx: typeof mocks.db) => unknown) => {
     const releases: Array<() => void> = [];
@@ -52,6 +53,7 @@ beforeEach(() => {
     try { return await work(tx); }
     finally { for (const release of releases) release(); }
   });
+  mocks.db.account.findUnique.mockImplementation(async ({ where }) => where.id === actorId ? { id: actorId, status: "ACTIVE" } : null);
   mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat });
   mocks.db.guardChat.findUnique.mockResolvedValue(chat);
   mocks.getMember.mockImplementation(async (_chat: string, id: string) => ({ status: id === "22" ? "member" : "administrator", can_restrict_members: true, can_post_messages: true, can_delete_messages: true, user: { id: Number(id), first_name: "Member" } }));
@@ -86,7 +88,17 @@ describe("defensive admin operations", () => {
     await expect(moderateMember(input, actorId)).rejects.toMatchObject({ status: 404 });
     expect(mutations()).toHaveLength(0);
   });
-  it("rejects allowlist removal despite an existing grant", async () => {
+  it("allows active registered customers outside the platform allowlist", async () => {
+    vi.stubEnv("GUARD_ADMIN_IDS", "99");
+    await moderateMember(input, actorId);
+    expect(mutations()).toHaveLength(1);
+  });
+  it("blocks suspended customers despite an existing grant", async () => {
+    mocks.db.account.findUnique.mockResolvedValue({ id: actorId, status: "SUSPENDED" });
+    await expect(moderateMember(input, actorId)).rejects.toMatchObject({ status: 403 });
+    expect(mutations()).toHaveLength(0);
+  });
+  it("rejects unregistered customers despite an existing grant", async () => {
     await expect(moderateMember(input, "44")).rejects.toMatchObject({ status: 403 });
     expect(mutations()).toHaveLength(0);
   });
@@ -304,7 +316,7 @@ describe("admin API boundaries", () => {
     expect(response.status).toBe(200);
   });
   it("checks authentication before parsing invalid JSON", async () => {
-    mocks.getAdmin.mockResolvedValue(null);
+    mocks.getUser.mockResolvedValue(null);
     expect((await POST(request("{"))).status).toBe(401);
   });
   it("rejects cross-origin requests before parsing", async () => {

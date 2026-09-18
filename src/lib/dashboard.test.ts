@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   db: {
+    account: { findUnique: vi.fn() },
     guardChat: { findMany: vi.fn(), findFirst: vi.fn() },
     guardMember: { findMany: vi.fn(), count: vi.fn() },
     guardPost: { findMany: vi.fn(), count: vi.fn() },
@@ -36,6 +37,7 @@ function expectNoPrivateQueries() {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv("GUARD_ADMIN_IDS", adminId);
+  mocks.db.account.findUnique.mockResolvedValue({ id: adminId, status: "ACTIVE" });
   mocks.db.guardChat.findMany.mockResolvedValue([chat]);
   mocks.db.guardChat.findFirst.mockResolvedValue(chat);
   mocks.getMember.mockResolvedValue({ status: "administrator", user: { id: Number(adminId) } });
@@ -108,8 +110,13 @@ describe("dashboard authorization and scope", () => {
     expectNoPrivateQueries();
   });
 
-  it("rejects allowlist removal despite a stored chat grant", async () => {
+  it("allows registered customers outside the platform allowlist", async () => {
     vi.stubEnv("GUARD_ADMIN_IDS", "22");
+    expect((await loadDashboard(adminId, chat.id)).chat?.id).toBe(chat.id);
+  });
+
+  it("rejects suspended customers despite a stored chat grant", async () => {
+    mocks.db.account.findUnique.mockResolvedValue({ id: adminId, status: "SUSPENDED" });
     await expect(loadDashboard(adminId, chat.id)).rejects.toMatchObject({ status: 403 });
     expect(mocks.getMember).not.toHaveBeenCalled();
     expectNoPrivateQueries();

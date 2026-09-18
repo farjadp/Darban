@@ -120,6 +120,68 @@ model GuardUpdate {
   leaseAt   DateTime @default(now())
 }
 
+model Account {
+  id           String        @id
+  name         String
+  locale       String        @default("fa")
+  status       String        @default("ACTIVE")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  subscription Subscription?
+  requests     PlanRequest[]
+}
+
+model Plan {
+  id               String         @id
+  monthlyCents     Int
+  annualCents      Int
+  introAnnualCents Int?
+  currency         String         @default("USD")
+  featuresFaJson   Json           @default("[]")
+  featuresEnJson   Json           @default("[]")
+  available        Boolean        @default(true)
+  subscriptions    Subscription[]
+  requests         PlanRequest[]
+}
+
+model Subscription {
+  accountId String   @id
+  planId    String   @default("free")
+  status    String   @default("FREE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account   Account  @relation(fields: [accountId], references: [id])
+  plan      Plan     @relation(fields: [planId], references: [id])
+}
+
+model PlanRequest {
+  id           String   @id @default(cuid())
+  accountId    String
+  planId       String
+  interval     String
+  initialCents Int
+  renewalCents Int
+  currency     String   @default("USD")
+  status       String   @default("PENDING")
+  requestId    String   @unique
+  createdAt    DateTime @default(now())
+  account      Account  @relation(fields: [accountId], references: [id])
+  plan         Plan     @relation(fields: [planId], references: [id])
+
+  @@index([accountId, createdAt])
+}
+
+model PlatformEvent {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  targetId   String?
+  detailJson Json
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model LoginReceipt {
   hash      String   @id
   expiresAt DateTime

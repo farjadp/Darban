@@ -3,8 +3,10 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { Chat } from "@/lib/dashboard";
+import { dashboardCopy, mutationError } from "@/lib/dashboard-copy";
+import { formatNumber, pathFor, type Locale } from "@/lib/i18n";
 
-type Props = { disabled?: boolean } & (
+type Props = { disabled?: boolean; locale?: Locale } & (
   | { operation: "connect" }
   | { operation: "publish"; chat: Chat }
   | { operation: "moderate"; chat: Chat; targetId: string; action: "ban" | "unban" }
@@ -12,10 +14,12 @@ type Props = { disabled?: boolean } & (
   | { operation: "review"; chat: Chat; alertId: string }
   | { operation: "sync"; chat: Chat; postId: string }
 );
-const inputClass = "w-full rounded-md border border-zinc-300 bg-white px-3 py-2.5 text-sm leading-6 placeholder:text-zinc-500 disabled:bg-zinc-100";
-const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-md bg-zinc-950 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-600";
+const inputClass = "min-h-11 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm leading-6 text-ink placeholder:text-muted focus:border-forest focus:outline-2 focus:outline-offset-2 focus:outline-forest disabled:bg-canvas";
+const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-lg bg-forest px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted";
 
 export function AdminForm(props: Props) {
+  const locale = props.locale ?? "fa";
+  const c = dashboardCopy(locale);
   const id = useId();
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -23,7 +27,7 @@ export function AdminForm(props: Props) {
   const [length, setLength] = useState(0);
   const request = useRef<{ key: string; id: string } | null>(null);
   const inFlight = useRef(false);
-  const labels = { connect: "بررسی و اتصال کانال", publish: "بررسی و انتشار", moderate: props.operation === "moderate" && props.action === "unban" ? "رفع مسدودیت" : "مسدود کردن", settings: "ذخیرهٔ تنظیمات", review: "ثبت به‌عنوان بررسی‌شده", sync: "همگام‌سازی شمارنده‌ها" };
+  const labels = { connect: c.connect, publish: c.publish, moderate: props.operation === "moderate" && props.action === "unban" ? c.unban : c.ban, settings: c.saveSettings, review: c.review, sync: c.sync };
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,8 +44,8 @@ export function AdminForm(props: Props) {
     if (props.operation === "sync") payload.postId = props.postId;
     if (props.operation === "publish" || props.operation === "moderate") {
       const description = props.operation === "publish"
-        ? `انتشار این متن در «${props.chat.title}» (${props.chat.id}) برای مخاطبان کانال؟\n\n${payload.text}`
-        : `${props.action === "ban" ? "مسدود کردن" : "رفع مسدودیت"} حساب ${props.targetId} در «${props.chat.title}» (${props.chat.id})؟\nدلیل: ${payload.reason}\n\nمسدود کردن در تلگرام ممکن است تاریخچهٔ پیام‌ها را حذف کند. رفع مسدودیت، عضویت را بازنمی‌گرداند.`;
+        ? `${c.publishConfirm}\n${c.destination}: ${props.chat.title} (${props.chat.id})\n\n${payload.text}`
+        : `${c.moderateConfirm}\n${labels.moderate}: ${props.targetId}\n${c.destination}: ${props.chat.title} (${props.chat.id})\n${c.reason}: ${payload.reason}\n\n${c.moderationWarning}`;
       if (!window.confirm(description)) return;
       const key = JSON.stringify(payload);
       if (request.current?.key !== key) request.current = { key, id: crypto.randomUUID() };
@@ -51,24 +55,25 @@ export function AdminForm(props: Props) {
     setPending(true);
     setFeedback("");
     try {
-      const response = await fetch("/api/admin", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30_000) });
+      const response = await fetch("/api/admin", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "x-darban-locale": locale }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30_000) });
       const result = await response.json();
       if (!response.ok || result.ok !== true) {
-        setFeedback(typeof result.error === "string" ? result.error : "درخواست انجام نشد. وضعیت اتصال را بررسی و دوباره تلاش کنید.");
+        setFeedback(mutationError(locale, response.status, result.error));
         return;
       }
       const status = result.result?.status ?? result.status;
       const requiresDefiniteResult = props.operation === "publish" || props.operation === "moderate";
-      const message = status === "PENDING" ? "درخواست در انتظار نتیجه است. گزارش عملیات را بررسی کنید." : status === "FAILED" ? "عملیات ناموفق بود. جزئیات را در گزارش عملیات بررسی کنید." : status === "UNKNOWN" || (requiresDefiniteResult && status !== "SUCCEEDED") ? "نتیجه نامشخص است. پیش از اقدام دوباره، گزارش عملیات و تلگرام را بررسی کنید." : "درخواست با موفقیت ثبت شد.";
+      const message = status === "PENDING" ? c.pendingResult : status === "FAILED" ? c.failedResult : status === "UNKNOWN" || (requiresDefiniteResult && status !== "SUCCEEDED") ? c.unknownResult : c.successResult;
       const warning = result.result?.warning ?? result.warning;
-      setFeedback(typeof warning === "string" ? `${message} ${warning}` : message);
+      const localizedWarning = typeof warning === "string" ? locale === "en" && /[\u0600-\u06ff]/.test(warning) ? c.resultWarning : warning : "";
+      setFeedback(localizedWarning ? `${message} ${localizedWarning}` : message);
       if (props.operation === "publish" && status === "SUCCEEDED") {
         form.reset();
         setLength(0);
         request.current = null;
       }
     } catch {
-      setFeedback("پاسخ معتبری دریافت نشد؛ نتیجه ممکن است نامشخص باشد. برای تلاش مجدد با همان شناسه، فرم را تغییر ندهید و صفحه را نبندید.");
+      setFeedback(c.networkError);
     } finally {
       inFlight.current = false;
       setPending(false);
@@ -76,46 +81,55 @@ export function AdminForm(props: Props) {
     }
   }
 
-  return <form onSubmit={submit} aria-label={labels[props.operation]} aria-busy={pending} className="space-y-3">
+  return <form onSubmit={submit} aria-label={labels[props.operation]} aria-busy={pending} className="space-y-3 text-start">
     <fieldset disabled={pending || props.disabled} className="min-w-0 space-y-4 disabled:opacity-75">
       {props.operation === "connect" && <>
-        <div className="space-y-2"><label htmlFor={`${id}-chat`} className="block text-sm font-medium">شناسهٔ عددی یا نام کاربری کانال یا گروه</label><input id={`${id}-chat`} name="chatId" required pattern="(?:-[0-9]{1,20}|@[a-zA-Z0-9_]{5,32})" placeholder="@channel_name" dir="ltr" className={inputClass} /></div>
-        <p className="text-sm leading-7 text-zinc-600">شناسهٔ عددی مانند <bdi dir="ltr">-1001234567890</bdi> یا نام کاربری مانند <bdi dir="ltr">@channel_name</bdi> را وارد کنید. ربات باید مدیر باشد و اجازهٔ ارسال پست و محدود کردن اعضا داشته باشد. دسترسی مدیریتی شما در تلگرام بررسی می‌شود.</p>
+        <div className="space-y-2"><label htmlFor={`${id}-chat`} className="block text-sm font-medium">{c.chatIdLabel}</label><input id={`${id}-chat`} name="chatId" required pattern="(?:-[0-9]{1,20}|@[a-zA-Z0-9_]{5,32})" placeholder="@channel_name" dir="ltr" className={inputClass} aria-describedby={`${id}-chat-help`} /></div>
+        <p id={`${id}-chat-help`} className="text-sm leading-7 text-muted">{c.connectHelp} <bdi dir="ltr">-1001234567890</bdi> · <bdi dir="ltr">@channel_name</bdi></p>
       </>}
       {props.operation === "publish" && <>
-        <div className="space-y-2"><label htmlFor={`${id}-text`} className="block text-sm font-medium">متن پست</label><textarea id={`${id}-text`} name="text" required minLength={1} maxLength={4096} rows={5} onChange={(event) => setLength(event.target.value.length)} placeholder="متنی که می‌خواهید در کانال منتشر شود…" className={inputClass} aria-describedby={`${id}-text-help`} /></div>
-        <p id={`${id}-text-help`} className="text-sm text-zinc-600">{new Intl.NumberFormat("fa-IR").format(length)} از ۴٬۰۹۶ نویسه · فقط متن؛ با دکمه‌های رأی‌گیری ربات</p>
-        <p className="text-sm text-zinc-600">مقصد: {props.chat.title} · <bdi dir="ltr">{props.chat.id}</bdi></p>
+        <div className="space-y-2"><label htmlFor={`${id}-text`} className="block text-sm font-medium">{c.postText}</label><textarea id={`${id}-text`} name="text" dir="auto" required minLength={1} maxLength={4096} rows={6} onChange={(event) => setLength(event.target.value.length)} placeholder={c.postPlaceholder} className={inputClass} aria-describedby={`${id}-text-help`} /></div>
+        <p id={`${id}-text-help`} className="text-sm text-muted">{formatNumber(length, locale)} {c.of} {formatNumber(4096, locale)} {c.characterHelp}</p>
+        <p className="break-words text-sm text-muted">{c.destination}: <bdi>{props.chat.title}</bdi> · <bdi dir="ltr">{props.chat.id}</bdi></p>
       </>}
       {props.operation === "moderate" && <>
-        <p className="text-sm leading-7">حساب <bdi dir="ltr" className="font-mono">{props.targetId}</bdi> در {props.chat.title} · <bdi dir="ltr">{props.chat.id}</bdi></p>
-        <div className="space-y-2"><label htmlFor={`${id}-reason`} className="block text-sm font-medium">دلیل اقدام</label><input id={`${id}-reason`} name="reason" required maxLength={500} placeholder="دلیل قابل ثبت در گزارش عملیات" className={inputClass} /></div>
-        <p className="max-w-xl text-sm leading-7 text-zinc-600">مسدود کردن در تلگرام ممکن است تاریخچهٔ پیام‌ها را حذف کند. رفع مسدودیت، عضویت را بازنمی‌گرداند.</p>
+        <p className="break-words text-sm leading-7">{c.account}: <bdi dir="ltr" className="font-mono">{props.targetId}</bdi> · <bdi>{props.chat.title}</bdi> · <bdi dir="ltr">{props.chat.id}</bdi></p>
+        <div className="space-y-2"><label htmlFor={`${id}-reason`} className="block text-sm font-medium">{c.actionReason}</label><input id={`${id}-reason`} name="reason" dir="auto" required maxLength={500} placeholder={c.reasonPlaceholder} className={inputClass} aria-describedby={`${id}-moderation-help`} /></div>
+        <p id={`${id}-moderation-help`} className="max-w-xl text-sm leading-7 text-muted">{c.moderationWarning}</p>
       </>}
       {props.operation === "settings" && <>
-        <div className="max-w-xs space-y-2"><label htmlFor={`${id}-hours`} className="block text-sm font-medium">مدت انتظار از زمان عضویت (ساعت)</label><input id={`${id}-hours`} name="waitHours" type="number" min={0} max={168} step={1} required defaultValue={props.chat.waitHours} className={inputClass} /><p className="text-sm text-zinc-600">بین ۰ تا ۱۶۸ ساعت</p></div>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="verification" defaultChecked={props.chat.verification} className="size-5 accent-zinc-950" />تأیید حساب با ربات پیش از رأی دادن</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="commentGate" defaultChecked={props.chat.commentGate} className="size-5 accent-zinc-950" />اعمال زمان انتظار پس از عضویت برای دیدگاه‌ها</label>
-        <div className="max-w-md space-y-2"><label htmlFor={`${id}-discussion`} className="block text-sm font-medium">شناسهٔ گروه گفتگوی مرتبط</label><input id={`${id}-discussion`} name="discussionChatId" pattern="-?[0-9]+" dir="ltr" defaultValue={props.chat.discussionChatId ?? ""} placeholder="-1001234567890" className={inputClass} /><p className="text-sm leading-7 text-zinc-600">برای کنترل دیدگاه‌ها، گروه مرتبط و دسترسی مدیریتی ربات لازم است. خالی گذاشتن یعنی بدون گروه مرتبط.</p></div>
+        <div className="max-w-xs space-y-2"><label htmlFor={`${id}-hours`} className="block text-sm font-medium">{c.waitHoursLabel}</label><input id={`${id}-hours`} name="waitHours" type="number" min={0} max={168} step={1} required defaultValue={props.chat.waitHours} className={inputClass} aria-describedby={`${id}-hours-help`} /><p id={`${id}-hours-help`} className="text-sm text-muted">{c.waitRange}</p></div>
+        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="verification" defaultChecked={props.chat.verification} className="size-5 shrink-0 accent-forest" />{c.verifyBeforeVote}</label>
+        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="commentGate" defaultChecked={props.chat.commentGate} className="size-5 shrink-0 accent-forest" />{c.gateComments}</label>
+        <div className="max-w-md space-y-2"><label htmlFor={`${id}-discussion`} className="block text-sm font-medium">{c.discussionId}</label><input id={`${id}-discussion`} name="discussionChatId" pattern="-?[0-9]+" dir="ltr" defaultValue={props.chat.discussionChatId ?? ""} placeholder="-1001234567890" className={inputClass} aria-describedby={`${id}-discussion-help`} /><p id={`${id}-discussion-help`} className="text-sm leading-7 text-muted">{c.discussionHelp}</p></div>
       </>}
-      <button type="submit" className={buttonClass}>{pending ? "در حال ارسال…" : labels[props.operation]}</button>
+      <button type="submit" className={buttonClass}>{pending ? c.sending : labels[props.operation]}</button>
     </fieldset>
-    {feedback && <p role="alert" className="max-w-2xl rounded-md border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm leading-7">{feedback}</p>}
+    {feedback && <p role="alert" className="max-w-2xl rounded-lg border border-line bg-canvas px-4 py-3 text-sm leading-7">{feedback}</p>}
   </form>;
 }
 
-export function LogoutButton() {
+export function LogoutButton({ locale = "fa" }: { locale?: Locale } = {}) {
   const router = useRouter();
+  const c = dashboardCopy(locale);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const inFlight = useRef(false);
   async function logout() {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPending(true);
+    setError("");
     try {
-      const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+      const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", headers: { "x-darban-locale": locale }, signal: AbortSignal.timeout(30_000) });
       if (!response.ok) throw new Error();
-      router.replace("/login");
+      router.replace(pathFor(locale, "login"));
       router.refresh();
-    } catch { setError("خروج انجام نشد. دوباره تلاش کنید."); setPending(false); }
+    } catch {
+      setError(c.logoutError);
+      setPending(false);
+      inFlight.current = false;
+    }
   }
-  return <div><button onClick={logout} disabled={pending} className="min-h-11 rounded-md px-3 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50">{pending ? "در حال خروج…" : "خروج از حساب"}</button>{error && <p role="alert" className="text-sm">{error}</p>}</div>;
+  return <div><button onClick={logout} disabled={pending} aria-busy={pending} className="min-h-11 rounded-lg px-3 text-sm text-muted hover:bg-canvas hover:text-ink disabled:opacity-50">{pending ? c.loggingOut : c.logout}</button>{error && <p role="alert" className="text-sm">{error}</p>}</div>;
 }
