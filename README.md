@@ -87,7 +87,9 @@ In [@BotFather](https://t.me/BotFather), run `/setdomain` for the same bot and g
 
 ### ☁️ Deploying
 
-`railway.json` carries the deploy configuration: migrations run in the pre-deploy step, `/login` is the healthcheck, and the server binds `0.0.0.0` so the platform's proxy can reach it. Attach a PostgreSQL database and point `DATABASE_URL` at it, set the rest of the variables below, and a push to `main` deploys.
+The `start` script applies pending migrations and then serves on `0.0.0.0`, so the platform's proxy can reach it and the schema is never behind the code. `railway.json` sets `/login` as the healthcheck and restarts on failure. Attach a PostgreSQL database, point `DATABASE_URL` at it, set the rest of the variables below, and a push to `main` deploys.
+
+Because `start` needs a reachable database, run the app locally with `npm run dev`, which reads `.env`.
 
 Until every variable is set, `/login` stays up and lists exactly which ones are missing.
 
@@ -192,7 +194,9 @@ npm run guard:setup -- --apply
 
 ### ☁️ استقرار
 
-تنظیمات استقرار در `railway.json` است: مایگریشن‌ها در مرحله‌ی پیش از استقرار اجرا می‌شوند، مسیر `/login` هلث‌چک است و سرور روی `0.0.0.0` گوش می‌دهد تا پراکسی سرویس میزبان به آن برسد. یک پایگاه داده‌ی PostgreSQL وصل کنید، `DATABASE_URL` را به آن اشاره دهید، بقیه‌ی متغیرهای جدول پایین را ست کنید؛ از آن به بعد هر پوش روی `main` مستقر می‌شود.
+اسکریپت `start` اول مایگریشن‌های اجرانشده را اعمال می‌کند و بعد روی `0.0.0.0` سرویس می‌دهد، تا هم پراکسی میزبان به آن برسد و هم شِما هیچ‌وقت از کد عقب نماند. در `railway.json` مسیر `/login` هلث‌چک است و سیاست ری‌استارت روی خطا تنظیم شده. یک پایگاه داده‌ی PostgreSQL وصل کنید، `DATABASE_URL` را به آن اشاره دهید، بقیه‌ی متغیرهای جدول پایین را ست کنید؛ از آن به بعد هر پوش روی `main` مستقر می‌شود.
+
+چون `start` به پایگاه داده‌ی در دسترس نیاز دارد، اجرای محلی را با `npm run dev` انجام دهید که `.env` را می‌خواند.
 
 تا وقتی همه‌ی متغیرها ست نشده‌اند، مسیر `/login` بالا می‌ماند و دقیقاً فهرست می‌کند کدام‌ها جا افتاده‌اند.
 
