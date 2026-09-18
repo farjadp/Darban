@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model GuardChat {
+  id               String        @id
+  title            String
+  type             String
+  username         String?
+  active           Boolean       @default(true)
+  waitHours        Int           @default(24)
+  verification     Boolean       @default(true)
+  commentGate      Boolean       @default(false)
+  discussionChatId String?       @unique
+  createdAt        DateTime      @default(now())
+  admins           ChatAdmin[]
+  members          GuardMember[]
+  posts            GuardPost[]
+  alerts           GuardAlert[]
+  events           GuardEvent[]
+}
+
+model ChatAdmin {
+  chatId String
+  userId String
+  chat   GuardChat @relation(fields: [chatId], references: [id])
+
+  @@id([chatId, userId])
+  @@index([userId])
+}
+
+model GuardUser {
+  id         String        @id
+  name       String
+  verifiedAt DateTime?
+  members    GuardMember[]
+}
+
+model GuardMember {
+  chatId       String
+  userId       String
+  joinedAt     DateTime?
+  membershipAt DateTime?
+  banned       Boolean   @default(false)
+  present      Boolean   @default(true)
+  firstVotedAt DateTime?
+  chat         GuardChat @relation(fields: [chatId], references: [id])
+  user         GuardUser @relation(fields: [userId], references: [id])
+
+  @@id([chatId, userId])
+  @@index([chatId, firstVotedAt])
+}
+
+model GuardPost {
+  id        String      @id @default(cuid())
+  requestId String      @unique
+  chatId    String
+  messageId Int?
+  text      String
+  status    String      @default("PENDING")
+  createdAt DateTime    @default(now())
+  chat      GuardChat   @relation(fields: [chatId], references: [id])
+  votes     GuardVote[]
+  alert     GuardAlert?
+
+  @@unique([chatId, messageId])
+}
+
+model GuardVote {
+  postId    String
+  userId    String
+  choice    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  first     Boolean  @default(false)
+  post      GuardPost @relation(fields: [postId], references: [id])
+
+  @@id([postId, userId])
+  @@index([postId, createdAt])
+}
+
+model GuardAlert {
+  id         String    @id @default(cuid())
+  chatId     String
+  postId     String    @unique
+  candidates Json
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+  reviewedBy String?
+  notifiedAt DateTime?
+  chat       GuardChat @relation(fields: [chatId], references: [id])
+  post       GuardPost @relation(fields: [postId], references: [id])
+}
+
+model GuardEvent {
+  id        String    @id @default(cuid())
+  requestId String    @unique
+  chatId    String
+  actorId   String
+  targetId  String?
+  action    String
+  reason    String
+  status    String    @default("PENDING")
+  detail    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  chat      GuardChat @relation(fields: [chatId], references: [id])
+
+  @@index([chatId, createdAt])
+}
+
+model GuardUpdate {
+  id        String   @id
+  completed Boolean  @default(false)
+  leaseAt   DateTime @default(now())
+}
+
+model LoginReceipt {
+  hash      String   @id
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}

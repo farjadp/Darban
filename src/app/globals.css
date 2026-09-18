@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Vazirmatn", sans-serif;
+}
+
+@layer base {
+  html { color-scheme: light; }
+  body { margin: 0; }
+  button, input, select, textarea { font: inherit; }
+  button:not(:disabled), summary { cursor: pointer; }
+  :focus-visible { outline: 2px solid #18181b; outline-offset: 4px; }
+  ::selection { background: #27272a; color: #fff; }
+  input, textarea { caret-color: #18181b; }
+  bdi { unicode-bidi: isolate; }
+  h1, h2, h3 { text-wrap: balance; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  }
+}

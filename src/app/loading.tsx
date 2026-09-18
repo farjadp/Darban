@@ -1,0 +1,3 @@
+export default function Loading() {
+  return <main id="main-content" aria-busy="true" className="mx-auto max-w-6xl px-6 py-16"><p role="status" className="text-sm text-zinc-600">در حال دریافت اطلاعات…</p><div aria-hidden="true" className="mt-8 space-y-8 motion-safe:animate-pulse"><div className="h-9 w-48 rounded bg-zinc-200" /><div className="h-4 w-3/4 rounded bg-zinc-100" /><div className="h-24 border-y border-zinc-200 bg-zinc-50" />{[1, 2, 3].map((item) => <div key={item} className="space-y-4 border-b border-zinc-200 pb-8"><div className="h-5 w-1/3 rounded bg-zinc-200" /><div className="h-4 w-5/6 rounded bg-zinc-100" /></div>)}</div></main>;
+}
