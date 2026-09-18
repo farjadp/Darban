@@ -12,13 +12,15 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Tests](https://img.shields.io/badge/tests-vitest-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev)
 
-**[English](#-english)** · **[فارسی](#-فارسی)**
+<img src="assets/iran-flag.png" width="132" alt="پرچم شیر و خورشید ایران">
+
+**[English](#english)** · **[فارسی](#فارسی)**
 
 </div>
 
 ---
 
-## 🇬🇧 English
+## English
 
 Telegram's own reactions cannot be gated. The setting is all‑or‑nothing, and the bot only hears about a reaction after it has already landed. Darban replaces them: every post carries an inline keyboard, so a tap arrives as a `callback_query` the bot can refuse before it counts.
 
@@ -132,7 +134,7 @@ npm run lint
 
 <div dir="rtl">
 
-## 🇮🇷 فارسی
+## فارسی
 
 واکنش‌های خود تلگرام را نمی‌شود دروازه‌دار کرد. تنظیمش یا همه یا هیچ است و بات تازه وقتی از یک واکنش خبردار می‌شود که ثبت شده باشد. دربان جای آن‌ها را می‌گیرد: زیر هر پست یک کیبورد شیشه‌ای می‌نشیند و هر تپ به‌صورت `callback_query` می‌رسد، یعنی بات می‌تواند پیش از شمرده‌شدن ردش کند.
 
