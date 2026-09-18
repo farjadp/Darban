@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import type { GuardEvent } from "@/generated/prisma/client";
-import { allowedAdmin, assertTelegramAdmin, GuardError, hasAdminRights, requireChat, requireRestriction } from "./access";
+import { assertActiveAccount, assertTelegramAdmin, GuardError, hasAdminRights, requireChat, requireRestriction } from "./access";
 import { adminInput } from "./input";
 import { isPresent, voteKeyboard } from "./protocol";
 import { refreshKeyboard, withChatLock } from "./store";
@@ -52,7 +52,11 @@ function failure(error: unknown) {
 export async function connectChat(chatId: string, actorId: string) {
   return safe(async () => {
     validate("connect", { chatId });
-    if (!allowedAdmin(actorId)) throw new GuardError("دسترسی مجاز نیست.", 403);
+    // Any registered, non-suspended customer may connect a chat. Whether they
+    // are allowed to is settled by their live Telegram admin rights below, not
+    // by a platform allowlist. Checked before the first Telegram call so a
+    // suspended account never reaches the API.
+    await assertActiveAccount(actorId);
     const info = await telegram<ChatInfo>("getChat", { chat_id: chatId });
     if (!["channel", "supergroup", "group"].includes(info.type) || !Number.isSafeInteger(info.id) || info.id >= 0) throw new GuardError("فقط کانال و گروه قابل اتصال هستند.");
     const canonicalId = String(info.id);

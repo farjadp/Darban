@@ -57,16 +57,31 @@ export async function handleVote(callback: NonNullable<Update["callback_query"]>
 async function notifyAlert(postId: string) {
   const alert = await db.guardAlert.findUnique({ where: { postId }, include: { chat: { include: { admins: true } } } });
   if (!alert || alert.notifiedAt) return;
-  const actor = alert.chat.admins.find(a => (process.env.GUARD_ADMIN_IDS ?? "").split(",").map(s => s.trim()).includes(a.userId));
   const appUrl = process.env.APP_URL;
-  if (!actor || !appUrl) return;
-  try { if (!hasAdminRights(await getMember(alert.chatId, actor.userId))) return; }
-  catch { return; }
+  if (!appUrl || !alert.chat.admins.length) return;
+  // The customers who connected this chat, not the platform operators: an
+  // alert about someone's own channel is theirs to read.
+  const accounts = await db.account.findMany({ where: { id: { in: alert.chat.admins.map(a => a.userId).slice(0, 10) }, status: "ACTIVE" }, select: { id: true } });
+  const recipients: string[] = [];
+  for (const account of accounts) {
+    // One unreachable admin must not silence the others.
+    try { if (hasAdminRights(await getMember(alert.chatId, account.id))) recipients.push(account.id); } catch { continue; }
+  }
+  if (!recipients.length) return;
   const claimed = await db.guardAlert.updateMany({ where: { id: alert.id, notifiedAt: null }, data: { notifiedAt: new Date() } });
   if (!claimed.count) return;
-  try {
-    await telegram("sendMessage", { chat_id: actor.userId, text: `هشدار برای ${alert.chat.title}: دست‌کم پنج حساب با اولین رأی در این چت، در بازه‌ی ۹۰ ثانیه به یک پست رأی داده‌اند. این فقط نشانه‌ی زمانی است؛ هیچ عضوی حذف نشده است.`, reply_markup: { inline_keyboard: [[{ text: "بررسی هشدار در پنل", url: `${new URL(appUrl).origin}/?chat=${encodeURIComponent(alert.chatId)}&view=alerts` }]] } });
-  } catch (error) {
-    if (error instanceof TelegramError && !error.uncertain) await db.guardAlert.update({ where: { id: alert.id }, data: { notifiedAt: null } });
+  const text = `هشدار برای ${alert.chat.title}: دست‌کم پنج حساب با اولین رأی در این چت، در بازه‌ی ۹۰ ثانیه به یک پست رأی داده‌اند. این فقط نشانه‌ی زمانی است؛ هیچ عضوی حذف نشده است.`;
+  const reply_markup = { inline_keyboard: [[{ text: "بررسی هشدار در پنل", url: `${new URL(appUrl).origin}/fa/portal?chat=${encodeURIComponent(alert.chatId)}&view=alerts` }]] };
+  let delivered = 0;
+  let uncertain = false;
+  for (const userId of recipients) {
+    try { await telegram("sendMessage", { chat_id: userId, text, reply_markup }); delivered++; }
+    catch (error) {
+      if (!(error instanceof TelegramError)) throw error;
+      if (error.uncertain) uncertain = true;
+    }
   }
+  // Nobody heard about it and no send was left in doubt: let the next vote try
+  // again rather than losing the alert to a transient refusal.
+  if (!delivered && !uncertain) await db.guardAlert.update({ where: { id: alert.id }, data: { notifiedAt: null } });
 }

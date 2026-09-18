@@ -222,6 +222,23 @@ describe("defensive admin operations", () => {
     expect(mocks.db.chatAdmin.upsert).toHaveBeenCalledTimes(1);
     expect(mocks.db.chatAdmin.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { chatId, userId: actorId } }));
   });
+  it("lets a registered customer outside the platform allowlist connect a chat", async () => {
+    vi.stubEnv("GUARD_ADMIN_IDS", "");
+    mocks.telegram.mockResolvedValue({ id: Number(chatId), title: "Example", type: "channel" });
+    await connectChat("@ExampleChannel", actorId);
+    expect(mocks.db.chatAdmin.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { chatId, userId: actorId } }));
+  });
+  it("refuses a suspended account before asking Telegram anything", async () => {
+    mocks.db.account.findUnique.mockResolvedValue({ id: actorId, status: "SUSPENDED" });
+    await expect(connectChat("@ExampleChannel", actorId)).rejects.toMatchObject({ status: 403 });
+    expect(mocks.telegram).not.toHaveBeenCalled();
+    expect(mocks.db.chatAdmin.upsert).not.toHaveBeenCalled();
+  });
+  it("refuses an account that has never registered", async () => {
+    mocks.db.account.findUnique.mockResolvedValue(null);
+    await expect(connectChat("@ExampleChannel", actorId)).rejects.toMatchObject({ status: 403 });
+    expect(mocks.telegram).not.toHaveBeenCalled();
+  });
   it("rejects unrelated discussion groups", async () => {
     mocks.telegram.mockResolvedValue({ id: Number(chatId), type: "channel", linked_chat_id: -999 });
     await expect(saveSettings({ chatId, waitHours: 24, verification: true, commentGate: true, discussionChatId: "-1234" }, actorId)).rejects.toMatchObject({ status: 400 });

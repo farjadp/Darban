@@ -3,6 +3,7 @@ import type { Update } from "./input";
 
 const mocks = vi.hoisted(() => ({
   db: {
+    account: { findMany: vi.fn() },
     guardPost: { findUnique: vi.fn() },
     guardAlert: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   },
@@ -70,6 +71,7 @@ beforeEach(() => {
   mocks.db.guardPost.findUnique.mockResolvedValue({ id: postId, chatId, messageId: 42, status: "SUCCEEDED", chat });
   mocks.db.guardAlert.findUnique.mockResolvedValue(null);
   mocks.db.guardAlert.updateMany.mockResolvedValue({ count: 1 });
+  mocks.db.account.findMany.mockResolvedValue([{ id: adminId }]);
   mocks.tx.guardChat.findUniqueOrThrow.mockResolvedValue(chat);
   mocks.tx.guardUser.upsert.mockResolvedValue({ id: userId, verifiedAt: new Date(now.getTime() - 86_400_000) });
   mocks.tx.guardMember.upsert.mockResolvedValue({ ...member });
@@ -226,24 +228,47 @@ describe("handleVote alert notification authorization", () => {
     expect(mocks.db.guardAlert.updateMany).not.toHaveBeenCalled();
   });
 
-  it.each(["administrator", "creator"])("notifies an allowlisted admin only after fresh %s verification", async (status) => {
+  it.each(["administrator", "creator"])("notifies the chat's registered owner only after fresh %s verification", async (status) => {
     mocks.db.guardAlert.findUnique.mockResolvedValue(pendingAlert());
     mocks.getMember.mockImplementation(async (_chatId: string, id: string) => ({ status: id === adminId ? status : "member" }));
     await handleVote(callback());
     expect(mocks.getMember).toHaveBeenCalledWith(chatId, adminId);
     expect(mocks.db.guardAlert.updateMany).toHaveBeenCalledWith({ where: { id: "alert-1", notifiedAt: null }, data: { notifiedAt: now } });
-    expect(mocks.telegram).toHaveBeenCalledWith("sendMessage", expect.objectContaining({ chat_id: adminId }));
+    expect(mocks.telegram).toHaveBeenCalledWith("sendMessage", expect.objectContaining({ chat_id: adminId, reply_markup: { inline_keyboard: [[expect.objectContaining({ url: `https://guard.example/fa/portal?chat=${encodeURIComponent(chatId)}&view=alerts` })]] } }));
     const membershipCallIndex = mocks.getMember.mock.calls.findIndex(([, id]) => id === adminId);
     const sendCallIndex = mocks.telegram.mock.calls.findIndex(([method]) => method === "sendMessage");
     expect(mocks.getMember.mock.invocationCallOrder[membershipCallIndex]).toBeLessThan(mocks.telegram.mock.invocationCallOrder[sendCallIndex]);
   });
 
-  it("does not notify a cached admin removed from the configured allowlist", async () => {
-    vi.stubEnv("GUARD_ADMIN_IDS", "888");
+  it("notifies an owner who is not on the platform allowlist", async () => {
+    vi.stubEnv("GUARD_ADMIN_IDS", "");
     mocks.db.guardAlert.findUnique.mockResolvedValue(pendingAlert());
+    mocks.getMember.mockImplementation(async (_chatId: string, id: string) => ({ status: id === adminId ? "administrator" : "member" }));
     await handleVote(callback());
+    expect(mocks.telegram).toHaveBeenCalledWith("sendMessage", expect.objectContaining({ chat_id: adminId }));
+  });
+
+  it("does not notify an owner whose account is suspended or gone", async () => {
+    mocks.db.guardAlert.findUnique.mockResolvedValue(pendingAlert());
+    mocks.db.account.findMany.mockResolvedValue([]);
+    await handleVote(callback());
+    expect(mocks.getMember).not.toHaveBeenCalledWith(chatId, adminId);
     expect(mocks.telegram).not.toHaveBeenCalledWith("sendMessage", expect.anything());
     expect(mocks.db.guardAlert.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reaches the remaining owners when one is unreachable, and claims the alert once", async () => {
+    const second = "777";
+    mocks.db.guardAlert.findUnique.mockResolvedValue({ ...pendingAlert(), chat: { ...chat, admins: [{ userId: adminId }, { userId: second }] } });
+    mocks.db.account.findMany.mockResolvedValue([{ id: adminId }, { id: second }]);
+    mocks.getMember.mockImplementation(async (_chatId: string, id: string) => {
+      if (id === adminId) throw new Error("telegram down");
+      return { status: id === second ? "administrator" : "member" };
+    });
+    await handleVote(callback());
+    expect(mocks.telegram).toHaveBeenCalledWith("sendMessage", expect.objectContaining({ chat_id: second }));
+    expect(mocks.telegram).not.toHaveBeenCalledWith("sendMessage", expect.objectContaining({ chat_id: adminId }));
+    expect(mocks.db.guardAlert.updateMany).toHaveBeenCalledOnce();
   });
 
   it("does not notify twice when another worker already claimed the alert", async () => {
