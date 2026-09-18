@@ -15,7 +15,7 @@ export function TelegramLogin({ botUsername }: { botUsername: string }) {
     if (!validUsername || !container.current) return;
     const target = container.current;
     const controller = new AbortController();
-    const callbackName = `telegramGuard_${crypto.randomUUID().replaceAll("-", "")}`;
+    const callbackName = `darbanLogin_${crypto.randomUUID().replaceAll("-", "")}`;
     const callbacks = window as unknown as Record<string, unknown>;
     let pending = false;
     let loadTimer: ReturnType<typeof setTimeout> | undefined;
