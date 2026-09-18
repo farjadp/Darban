@@ -83,6 +83,14 @@ npm run guard:setup -- --apply  # configure the webhook
 
 Then add the bot to your channel as an administrator with permission to post, restrict members, and delete messages, and connect the chat from the panel.
 
+In [@BotFather](https://t.me/BotFather), run `/setdomain` for the same bot and give it the origin in `APP_URL`. The Telegram login widget refuses to load on any other domain.
+
+### ☁️ Deploying
+
+`railway.json` carries the deploy configuration: migrations run in the pre-deploy step, `/login` is the healthcheck, and the server binds `0.0.0.0` so the platform's proxy can reach it. Attach a PostgreSQL database and point `DATABASE_URL` at it, set the rest of the variables below, and a push to `main` deploys.
+
+Until every variable is set, `/login` stays up and lists exactly which ones are missing.
+
 ### ⚙️ Configuration
 
 | Variable | Purpose |
@@ -179,6 +187,14 @@ npm run guard:setup -- --apply
 ```
 
 سپس بات را با دسترسی انتشار، محدودکردن اعضا و حذف پیام به کانال اضافه کنید و چت را از پنل وصل کنید.
+
+در [@BotFather](https://t.me/BotFather) برای همان بات دستور `/setdomain` را بزنید و دامنه‌ی داخل `APP_URL` را ثبت کنید. ویجت ورود تلگرام روی هیچ دامنه‌ی دیگری بالا نمی‌آید.
+
+### ☁️ استقرار
+
+تنظیمات استقرار در `railway.json` است: مایگریشن‌ها در مرحله‌ی پیش از استقرار اجرا می‌شوند، مسیر `/login` هلث‌چک است و سرور روی `0.0.0.0` گوش می‌دهد تا پراکسی سرویس میزبان به آن برسد. یک پایگاه داده‌ی PostgreSQL وصل کنید، `DATABASE_URL` را به آن اشاره دهید، بقیه‌ی متغیرهای جدول پایین را ست کنید؛ از آن به بعد هر پوش روی `main` مستقر می‌شود.
+
+تا وقتی همه‌ی متغیرها ست نشده‌اند، مسیر `/login` بالا می‌ماند و دقیقاً فهرست می‌کند کدام‌ها جا افتاده‌اند.
 
 ### ⚙️ پیکربندی
 
