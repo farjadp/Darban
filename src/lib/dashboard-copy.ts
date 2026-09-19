@@ -71,6 +71,7 @@ const copy = {
   lockCommands: ["قفل دستورات اسلش", "Lock slash commands"],
   lockLinks: ["قفل لینک و آیدی", "Lock links and mentions"],
   lockMedia: ["قفل مدیا (رسانه)", "Lock media"],
+  lockForwards: ["قفل فوروارد", "Lock forwarded messages"],
   latestEvents: ["آخرین عملیات", "Recent activity"],
   allEvents: ["مشاهدهٔ گزارش عملیات", "View activity log"],
   noEvents: ["عملیاتی ثبت نشده", "No activity recorded"],
@@ -133,6 +134,7 @@ const copy = {
   lockCommandsLabel: ["حذف دستورات اسلش کاربران عادی در گروه", "Delete slash commands from non-admin members in the group"],
   lockLinksLabel: ["حذف پیام‌های حاوی لینک یا آیدی در گروه", "Delete messages containing links or mentions in the group"],
   lockMediaLabel: ["حذف پیام‌های رسانه‌ای (تصویر، ویدیو، استیکر، گیف، ویس، فایل) در گروه", "Delete media messages (photo, video, sticker, gif, voice, files) in the group"],
+  lockForwardsLabel: ["حذف پیام‌های فوروارد شده (از کانال‌ها، کاربران، یا چت‌های دیگر) در گروه", "Delete forwarded messages (from channels, users, or other chats) in the group"],
   discussionId: ["شناسهٔ گروه گفتگوی مرتبط", "Linked discussion group ID"],
   discussionHelp: ["برای کنترل دیدگاه‌ها، گروه مرتبط باید جداگانه ثبت شده باشد و ربات در آن دسترسی مدیریتی داشته باشد. خالی گذاشتن یعنی بدون گروه مرتبط.", "To control comments, register the linked group separately and give the bot admin access there. Leave empty for no linked group."],
   sending: ["در حال ارسال…", "Sending…"],
@@ -163,6 +165,7 @@ const copy = {
   commandDeleteAction: ["حذف دستور اسلش", "Delete slash command"],
   linkDeleteAction: ["حذف لینک یا آیدی", "Delete link or mention"],
   mediaDeleteAction: ["حذف رسانه (مدیا)", "Delete media message"],
+  forwardDeleteAction: ["حذف پیام فوروارد", "Delete forwarded message"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type DashboardCopy = { [Key in keyof typeof copy]: string };
@@ -193,6 +196,7 @@ export function actionLabel(locale: Locale, action: string): string {
     command_delete: c.commandDeleteAction,
     link_delete: c.linkDeleteAction,
     media_delete: c.mediaDeleteAction,
+    forward_delete: c.forwardDeleteAction,
   };
   return labels[action.toLowerCase()] ?? c.recordedAction;
 }

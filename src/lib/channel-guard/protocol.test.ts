@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, detectMediaType, isMediaMessage } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -119,6 +119,36 @@ describe("media detection", () => {
     expect(detectMediaType({ photo: [] })).toBeNull();
     expect(detectMediaType({})).toBeNull();
     expect(isMediaMessage({})).toBe(false);
+  });
+});
+
+describe("forward detection", () => {
+  it("detects forward_origin channel, user, chat and hidden_user", () => {
+    expect(detectForwardOrigin({ forward_origin: { type: "channel" } })).toBe("channel");
+    expect(detectForwardOrigin({ forward_origin: { type: "user" } })).toBe("user");
+    expect(detectForwardOrigin({ forward_origin: { type: "chat" } })).toBe("chat");
+    expect(detectForwardOrigin({ forward_origin: { type: "hidden_user" } })).toBe("hidden_user");
+    expect(isForwardedMessage({ forward_origin: { type: "channel" } })).toBe(true);
+  });
+  it("detects legacy forward_from_chat and forward_from", () => {
+    expect(detectForwardOrigin({ forward_from_chat: { type: "channel" } })).toBe("channel");
+    expect(detectForwardOrigin({ forward_from_chat: { type: "supergroup" } })).toBe("chat");
+    expect(detectForwardOrigin({ forward_from: { id: "123" } })).toBe("user");
+    expect(detectForwardOrigin({ forward_sender_name: "Anonymous User" })).toBe("user");
+    expect(detectForwardOrigin({ forward_date: 1726700000 })).toBe("forward");
+    expect(isForwardedMessage({ forward_from: { id: "123" } })).toBe(true);
+  });
+  it("detects external replies to other chats", () => {
+    expect(detectForwardOrigin({ external_reply: { chat: { id: "-100" } } })).toBe("external_reply");
+    expect(isForwardedMessage({ external_reply: { chat: { id: "-100" } } })).toBe(true);
+  });
+  it("exempts automatic forwards from linked channel", () => {
+    expect(detectForwardOrigin({ is_automatic_forward: true, forward_origin: { type: "channel" } })).toBeNull();
+    expect(isForwardedMessage({ is_automatic_forward: true, forward_origin: { type: "channel" } })).toBe(false);
+  });
+  it("returns null / false for normal messages", () => {
+    expect(detectForwardOrigin({})).toBeNull();
+    expect(isForwardedMessage({})).toBe(false);
   });
 });
 

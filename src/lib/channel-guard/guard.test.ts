@@ -146,6 +146,62 @@ describe("webhook behavior", () => {
       expect.objectContaining({ data: expect.objectContaining({ action: "MEDIA_DELETE" }) })
     );
   });
+  it("deletes forwarded messages sent by regular members when lockForwards is enabled", async () => {
+    const group = { id: "-200", lockForwards: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 14,
+      message: {
+        message_id: 12,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "2", first_name: "عضو عادی" },
+        text: "پست فوروارد شده",
+        forward_origin: { type: "channel", chat: { id: "-100", title: "کانال دیگر", type: "channel" } },
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 12 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ chatId: "-200", action: "FORWARD_DELETE" }) })
+    );
+  });
+  it("allows forwarded messages sent by admins even when lockForwards is enabled", async () => {
+    const group = { id: "-200", lockForwards: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "administrator" });
+    await handleUpdate({
+      update_id: 15,
+      message: {
+        message_id: 13,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "3", first_name: "مدیر گروه" },
+        text: "فوروارد معتبر مدیر",
+        forward_origin: { type: "channel", chat: { id: "-100", title: "کانال دیگر", type: "channel" } },
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "FORWARD_DELETE" }) })
+    );
+  });
+  it("allows automatic forwards from linked channel even when lockForwards is enabled", async () => {
+    const group = { id: "-200", lockForwards: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    await handleUpdate({
+      update_id: 16,
+      message: {
+        message_id: 14,
+        chat: { id: "-200", type: "supergroup" },
+        is_automatic_forward: true,
+        text: "پست خودکار کانال",
+        forward_origin: { type: "channel" },
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "FORWARD_DELETE" }) })
+    );
+  });
   it("does not verify /start commands in public groups", async () => {
     mocks.db.guardChat.findFirst.mockResolvedValue(null);
     await handleUpdate({ update_id: 1, message: { message_id: 1, chat: { id: "-100", type: "supergroup" }, from: { id: "1", first_name: "عضو" }, text: "/start" } });

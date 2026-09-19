@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { GuardError, hasAdminRights } from "./access";
 import { handlePrivateMessage } from "./commands";
 import type { Update } from "./input";
-import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, isMediaMessage, detectMediaType } from "./protocol";
+import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin } from "./protocol";
 import { withChatLock } from "./store";
 import { getMember, telegram, TelegramError } from "./telegram";
 import { handleVote } from "./votes";
@@ -203,6 +203,48 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
         }
         let status = "SUCCEEDED";
         let detail = `${message.chat.id}/${message.message_id} (${mediaType})`;
+        try {
+          await telegram("deleteMessage", { chat_id: message.chat.id, message_id: message.message_id });
+        } catch (error) {
+          if (!(error instanceof TelegramError)) throw error;
+          status = error.uncertain ? "UNKNOWN" : "FAILED";
+          detail += `: ${error.message}`;
+        }
+        await db.guardEvent.update({ where: { requestId }, data: { status, detail } });
+        return;
+      }
+    }
+  }
+  if (isForwardedMessage(message) && message.from && !message.from.is_bot) {
+    const rules = await db.guardChat.findMany({
+      where: { active: true, lockForwards: true, OR: [{ id: message.chat.id }, { discussionChatId: message.chat.id }] },
+      orderBy: { id: "asc" },
+    });
+    if (rules.length > 0) {
+      const user = message.from;
+      const isAdmin = hasAdminRights(await getMember(message.chat.id, user.id));
+      if (!isAdmin) {
+        const chat = rules[0];
+        const originType = detectForwardOrigin(message) ?? "forward";
+        const requestId = `fwd-lock:${message.chat.id}:${message.message_id}`;
+        try {
+          await db.guardEvent.create({
+            data: {
+              requestId,
+              chatId: chat.id,
+              actorId: "system:forward-lock",
+              targetId: user.id,
+              action: "FORWARD_DELETE",
+              reason: `حذف پیام فوروارد (${originType}) کاربر عادی طبق تنظیم قفل فوروارد`,
+              detail: `${message.chat.id}/${message.message_id} (${originType})`,
+            },
+          });
+        } catch (error) {
+          if (uniqueConflict(error)) return;
+          throw error;
+        }
+        let status = "SUCCEEDED";
+        let detail = `${message.chat.id}/${message.message_id} (${originType})`;
         try {
           await telegram("deleteMessage", { chat_id: message.chat.id, message_id: message.message_id });
         } catch (error) {

@@ -48,7 +48,7 @@ export function AdminForm(props: Props) {
     if (props.operation === "connect") payload.chatId = String(fields.get("chatId") ?? "").trim();
     if (props.operation === "publish") payload.text = String(fields.get("text") ?? "").trim();
     if (props.operation === "moderate") payload = { ...payload, targetId: props.targetId, action: props.action, reason: String(fields.get("reason") ?? "").trim() };
-    if (props.operation === "settings") payload = { ...payload, waitHours: Number(fields.get("waitHours")), verification: fields.get("verification") === "on", commentGate: fields.get("commentGate") === "on", deleteJoinMessages: fields.get("deleteJoinMessages") === "on", lockCommands: fields.get("lockCommands") === "on", lockLinks: fields.get("lockLinks") === "on", lockMedia: fields.get("lockMedia") === "on", discussionChatId: String(fields.get("discussionChatId") ?? "").trim() || null };
+    if (props.operation === "settings") payload = { ...payload, waitHours: Number(fields.get("waitHours")), verification: fields.get("verification") === "on", commentGate: fields.get("commentGate") === "on", deleteJoinMessages: fields.get("deleteJoinMessages") === "on", lockCommands: fields.get("lockCommands") === "on", lockLinks: fields.get("lockLinks") === "on", lockMedia: fields.get("lockMedia") === "on", lockForwards: fields.get("lockForwards") === "on", discussionChatId: String(fields.get("discussionChatId") ?? "").trim() || null };
     if (props.operation === "review") payload.alertId = props.alertId;
     if (props.operation === "sync") payload.postId = props.postId;
     if (props.operation === "attach") payload = { ...payload, postId: props.postId, messageId: messageNumber(String(fields.get("messageId") ?? "")) };
@@ -130,6 +130,7 @@ export function AdminForm(props: Props) {
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockCommands" defaultChecked={props.chat.lockCommands} className="size-5 shrink-0 accent-forest" />{c.lockCommandsLabel}</label>
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockLinks" defaultChecked={props.chat.lockLinks} className="size-5 shrink-0 accent-forest" />{c.lockLinksLabel}</label>
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockMedia" defaultChecked={props.chat.lockMedia} className="size-5 shrink-0 accent-forest" />{c.lockMediaLabel}</label>
+        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockForwards" defaultChecked={props.chat.lockForwards} className="size-5 shrink-0 accent-forest" />{c.lockForwardsLabel}</label>
         <div className="max-w-md space-y-2"><label htmlFor={`${id}-discussion`} className="block text-sm font-medium">{c.discussionId}</label><input id={`${id}-discussion`} name="discussionChatId" pattern="-?[0-9]+" dir="ltr" defaultValue={props.chat.discussionChatId ?? ""} placeholder="-1001234567890" className={inputClass} aria-describedby={`${id}-discussion-help`} /><p id={`${id}-discussion-help`} className="text-sm leading-7 text-muted">{c.discussionHelp}</p></div>
       </>}
       <button type="submit" disabled={pending || props.disabled} className={buttonClass}>{pending ? c.sending : labels[props.operation]}</button>

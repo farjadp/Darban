@@ -20,6 +20,7 @@ model GuardChat {
   lockCommands     Boolean       @default(false)
   lockLinks        Boolean       @default(false)
   lockMedia        Boolean       @default(false)
+  lockForwards     Boolean       @default(false)
   discussionChatId String?       @unique
   createdAt        DateTime      @default(now())
   admins           ChatAdmin[]

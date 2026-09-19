@@ -105,5 +105,44 @@ export function isMediaMessage(message: {
   return detectMediaType(message) !== null;
 }
 
+export type ForwardOriginType = "channel" | "user" | "chat" | "hidden_user" | "external_reply" | "forward";
+
+export function detectForwardOrigin(message: {
+  forward_origin?: { type?: string };
+  forward_from?: unknown;
+  forward_from_chat?: { type?: string };
+  forward_sender_name?: string;
+  forward_date?: number;
+  external_reply?: unknown;
+  is_automatic_forward?: boolean;
+}): ForwardOriginType | null {
+  if (message.is_automatic_forward) return null;
+  if (message.forward_origin?.type) {
+    if (message.forward_origin.type === "channel") return "channel";
+    if (message.forward_origin.type === "user") return "user";
+    if (message.forward_origin.type === "chat") return "chat";
+    if (message.forward_origin.type === "hidden_user") return "hidden_user";
+  }
+  if (message.forward_from_chat) {
+    return message.forward_from_chat.type === "channel" ? "channel" : "chat";
+  }
+  if (message.forward_from || message.forward_sender_name) return "user";
+  if (message.external_reply) return "external_reply";
+  if (message.forward_date) return "forward";
+  return null;
+}
+
+export function isForwardedMessage(message: {
+  forward_origin?: { type?: string };
+  forward_from?: unknown;
+  forward_from_chat?: { type?: string };
+  forward_sender_name?: string;
+  forward_date?: number;
+  external_reply?: unknown;
+  is_automatic_forward?: boolean;
+}): boolean {
+  return detectForwardOrigin(message) !== null;
+}
+
 
 
