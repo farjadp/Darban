@@ -50,7 +50,8 @@ export function PostEditor({ locale, name = "text", disabled = false, onPhotoCha
   const [photoError, setPhotoError] = useState("");
 
   const nodes = useMemo(() => parse(value), [value]);
-  const length = useMemo(() => [...plainText(nodes)].length, [nodes]);
+  // UTF-16 code units, matching the limit Telegram enforces (see markup.ts).
+  const length = useMemo(() => plainText(nodes).length, [nodes]);
   const limit = photo ? CAPTION_LIMIT : TEXT_LIMIT;
   const over = length > limit;
 

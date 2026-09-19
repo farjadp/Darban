@@ -76,8 +76,16 @@ describe("length", () => {
     expect(render("[Darban](https://darban.xyz)").length).toBe(6);
     expect(render("plain").length).toBe(5);
   });
-  it("counts an emoji as the reader sees it", () => {
-    expect(render("🌳").length).toBe(1);
+  it("counts an emoji the way Telegram does, not the way a reader would", () => {
+    // Telegram's 4096 is UTF-16 code units, so an emoji outside the BMP is two.
+    expect(render("🌳").length).toBe(2);
+    expect(render("سلام").length).toBe(4);
+    expect(render("*🌳🌳*").length).toBe(4);
+  });
+  it("agrees with the limit Telegram will apply", () => {
+    const post = "🌳".repeat(2048);
+    expect(render(post).length).toBe(4096);
+    expect(render(post + "🌳").length).toBeGreaterThan(4096);
   });
   it("reports the text of a whole post", () => {
     expect(plainText(parse("*a* _b_ `c`"))).toBe("a b c");

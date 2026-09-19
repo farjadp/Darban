@@ -113,7 +113,7 @@ export function toHtml(nodes: Node[]): string {
   }).join("");
 }
 
-/** What Telegram will count against the length limit: the text without any markers. */
+/** The text without any markers — what Telegram measures, and what it charges for. */
 export function plainText(nodes: Node[]): string {
   return nodes.map((node) => {
     if (node.type === "text") return node.value;
@@ -124,5 +124,8 @@ export function plainText(nodes: Node[]): string {
 
 export function render(markup: string): { html: string; length: number } {
   const nodes = parse(markup);
-  return { html: toHtml(nodes), length: [...plainText(nodes)].length };
+  // UTF-16 code units, because that is the unit Telegram's 4096 is written in.
+  // Counting code points instead would let a post full of emoji pass here and
+  // be refused there: every emoji outside the BMP is two units, not one.
+  return { html: toHtml(nodes), length: plainText(nodes).length };
 }
