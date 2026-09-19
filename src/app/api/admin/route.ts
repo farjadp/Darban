@@ -1,6 +1,6 @@
 import { assertSameOrigin, AuthError, getUser } from "@/lib/auth";
 import { GuardError } from "@/lib/channel-guard/access";
-import { connectChat, moderateMember, publishGuardPost, reviewAlert, saveSettings, syncPost } from "@/lib/channel-guard/actions";
+import { attachPost, connectChat, moderateMember, publishGuardPost, reviewAlert, saveSettings, syncPost } from "@/lib/channel-guard/actions";
 import { adminInput } from "@/lib/channel-guard/input";
 import { PHOTO_LIMIT, readPhoto } from "@/lib/channel-guard/media";
 import type { PostPhoto } from "@/lib/channel-guard/actions";
@@ -74,6 +74,7 @@ export async function POST(request: Request) {
       case "settings": result = await saveSettings(input, admin.id); break;
       case "review": result = await reviewAlert(input, admin.id); break;
       case "sync": result = await syncPost(input, admin.id); break;
+      case "attach": result = await attachPost(input, admin.id); break;
     }
     return Response.json({ ok: true, result }, { headers });
   } catch (error) {

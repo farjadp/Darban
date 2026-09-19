@@ -16,6 +16,7 @@ const TEXT_LIMIT = 4096;
 const CAPTION_LIMIT = 1024;
 type ModerationInput = { chatId: string; targetId: string; action: "ban" | "unban"; reason: string; requestId: string };
 type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; discussionChatId: string | null };
+type AttachInput = { chatId: string; postId: string; messageId: number };
 const banWarning = "درخواست بدون حذف پیام‌ها ارسال شد؛ تلگرام ممکن است طبق قواعد خود پیام‌ها را حذف کند و عدم حذف قابل تضمین نیست.";
 const databaseMessage = "ثبت یا خواندن اطلاعات ممکن نشد. نتیجه را در سوابق بررسی کنید؛ عملیات را کورکورانه تکرار نکنید.";
 
@@ -89,57 +90,57 @@ export async function publishGuardPost(input: PublishInput, actorId: string, pho
     if (body.length > limit) throw new GuardError(photo ? `متن همراه عکس حداکثر ${CAPTION_LIMIT.toLocaleString("fa-IR")} نویسه است.` : `متن پست حداکثر ${TEXT_LIMIT.toLocaleString("fa-IR")} نویسه است.`, 400);
     const { chat, bot } = await requireChat(input.chatId, actorId);
     active(chat); posting(chat, bot);
-    const startedAt = Date.now();
-    return withChatLock(input.chatId, async () => {
-      const reservation = await withChatLock(`request:${input.requestId}`, async () => {
-        const [post, event, moderation] = await Promise.all([
-          db.guardPost.findUnique({ where: { requestId: input.requestId } }),
-          db.guardEvent.findUnique({ where: { requestId: `publish:${input.requestId}` } }),
-          db.guardEvent.findUnique({ where: { requestId: input.requestId } }),
-        ]);
-        if (moderation) collision();
-        if (post || event) {
-          if (!post || !event || post.chatId !== input.chatId || post.text !== input.text) collision();
-          sameEvent(event, { chatId: input.chatId, actorId, action: "publish", targetId: post.id });
-          replay(event);
-          if (post.status !== "SUCCEEDED" || !post.messageId) throw new GuardError("نتیجه انتشار نیازمند بررسی دستی است.", 409);
-          return { post, event, replayed: true };
-        }
-        return db.$transaction(async tx => {
-          const post = await tx.guardPost.create({ data: { chatId: input.chatId, requestId: input.requestId, text: input.text, status: "PENDING" } });
-          const event = await tx.guardEvent.create({ data: { requestId: `publish:${input.requestId}`, chatId: input.chatId, actorId, targetId: post.id, action: "publish", reason: "انتشار پست با درخواست صریح مدیر", status: "PENDING" } });
-          return { post, event, replayed: false };
-        });
+    // The send is deliberately outside any transaction. A photo upload may take
+    // a minute, and holding the chat lock across it once left a post that
+    // Telegram had delivered recorded here as unconfirmed, with its buttons
+    // dead. The reserved row, keyed by requestId, is what makes this idempotent.
+    const reservation = await withChatLock(`request:${input.requestId}`, async () => {
+      const [post, event, moderation] = await Promise.all([
+        db.guardPost.findUnique({ where: { requestId: input.requestId } }),
+        db.guardEvent.findUnique({ where: { requestId: `publish:${input.requestId}` } }),
+        db.guardEvent.findUnique({ where: { requestId: input.requestId } }),
+      ]);
+      if (moderation) collision();
+      if (post || event) {
+        if (!post || !event || post.chatId !== input.chatId || post.text !== input.text) collision();
+        sameEvent(event, { chatId: input.chatId, actorId, action: "publish", targetId: post.id });
+        replay(event);
+        if (post.status !== "SUCCEEDED" || !post.messageId) throw new GuardError("نتیجه انتشار نیازمند بررسی دستی است.", 409);
+        return { post, event, replayed: true };
+      }
+      return db.$transaction(async tx => {
+        const post = await tx.guardPost.create({ data: { chatId: input.chatId, requestId: input.requestId, text: input.text, status: "PENDING" } });
+        const event = await tx.guardEvent.create({ data: { requestId: `publish:${input.requestId}`, chatId: input.chatId, actorId, targetId: post.id, action: "publish", reason: "انتشار پست با درخواست صریح مدیر", status: "PENDING" } });
+        return { post, event, replayed: false };
       });
-      const { post, event } = reservation;
-      if (reservation.replayed) return { ...replay(event), postId: post.id, messageId: post.messageId };
-      let message: { message_id: number; photo?: { file_id: string }[] };
-      try {
-        requireSendBudget(startedAt);
-        const reply_markup = JSON.stringify(voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }));
-        message = photo
-          ? await telegramUpload<{ message_id: number; photo?: { file_id: string }[] }>("sendPhoto", { chat_id: input.chatId, caption: body.html, parse_mode: "HTML", reply_markup }, { field: "photo", blob: photo.blob, filename: photo.filename })
-          : await telegram<{ message_id: number }>("sendMessage", { chat_id: input.chatId, text: body.html, parse_mode: "HTML", link_preview_options: { is_disabled: false }, reply_markup: voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }) });
-        if (!Number.isSafeInteger(message?.message_id) || message.message_id <= 0) throw new TelegramError(0, true);
-      } catch (error) {
-        const result = failure(error);
-        await db.$transaction(async tx => {
-          await tx.guardPost.update({ where: { id: post.id }, data: { status: result.status } });
-          await tx.guardEvent.update({ where: { id: event.id }, data: result });
-        });
-        throw error;
-      }
-      try {
-        await db.$transaction(async tx => {
-          await tx.guardPost.update({ where: { id: post.id }, data: { status: "SUCCEEDED", messageId: message.message_id, photoFileId: message.photo?.at(-1)?.file_id ?? null } });
-          await tx.guardEvent.update({ where: { id: event.id }, data: { status: "SUCCEEDED" } });
-        });
-      } catch {
-        await db.guardEvent.update({ where: { id: event.id }, data: { status: "UNKNOWN", detail: `تلگرام انتشار را تأیید کرد؛ ذخیره محلی کامل نشد. message_id=${message.message_id}` } }).catch(() => undefined);
-        throw new GuardError(databaseMessage, 503);
-      }
-      return { status: "SUCCEEDED" as const, postId: post.id, messageId: message.message_id, eventId: event.id, replayed: false };
     });
+    const { post, event } = reservation;
+    if (reservation.replayed) return { ...replay(event), postId: post.id, messageId: post.messageId };
+    let message: { message_id: number; photo?: { file_id: string }[] };
+    try {
+      const reply_markup = JSON.stringify(voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }));
+      message = photo
+        ? await telegramUpload<{ message_id: number; photo?: { file_id: string }[] }>("sendPhoto", { chat_id: input.chatId, caption: body.html, parse_mode: "HTML", reply_markup }, { field: "photo", blob: photo.blob, filename: photo.filename })
+        : await telegram<{ message_id: number }>("sendMessage", { chat_id: input.chatId, text: body.html, parse_mode: "HTML", link_preview_options: { is_disabled: false }, reply_markup: voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }) });
+      if (!Number.isSafeInteger(message?.message_id) || message.message_id <= 0) throw new TelegramError(0, true);
+    } catch (error) {
+      const result = failure(error);
+      await db.$transaction(async tx => {
+        await tx.guardPost.update({ where: { id: post.id }, data: { status: result.status } });
+        await tx.guardEvent.update({ where: { id: event.id }, data: result });
+      });
+      throw error;
+    }
+    try {
+      await db.$transaction(async tx => {
+        await tx.guardPost.update({ where: { id: post.id }, data: { status: "SUCCEEDED", messageId: message.message_id, photoFileId: message.photo?.at(-1)?.file_id ?? null } });
+        await tx.guardEvent.update({ where: { id: event.id }, data: { status: "SUCCEEDED" } });
+      });
+    } catch {
+      await db.guardEvent.update({ where: { id: event.id }, data: { status: "UNKNOWN", detail: `تلگرام انتشار را تأیید کرد؛ ذخیره محلی کامل نشد. message_id=${message.message_id}` } }).catch(() => undefined);
+      throw new GuardError(databaseMessage, 503);
+    }
+    return { status: "SUCCEEDED" as const, postId: post.id, messageId: message.message_id, eventId: event.id, replayed: false };
   });
 }
 
@@ -241,6 +242,34 @@ export async function reviewAlert(input: { chatId: string; alertId: string }, ac
       const updated = await tx.guardAlert.update({ where: { id: input.alertId }, data: { reviewedAt: new Date(), reviewedBy: actorId } });
       await tx.guardEvent.create({ data: { requestId: `review:${randomUUID()}`, chatId: input.chatId, actorId, action: "review", targetId: input.alertId, reason: "گزارش توسط مدیر بررسی شد؛ هیچ اقدام خودکاری روی اعضا انجام نشد.", status: "SUCCEEDED" } });
       return updated;
+    });
+  });
+}
+
+/**
+ * A publish whose result Telegram never confirmed can still have reached the
+ * chat: the message is live and its buttons carry the post id, but nothing here
+ * knows which message it is, so every press is refused. The admin reads the
+ * number off the message link and hands it over; writing this post's own
+ * keyboard onto that message is what proves the claim, because Telegram lets a
+ * bot edit only its own message — and a refusal rolls the row back with it.
+ */
+export async function attachPost(input: AttachInput, actorId: string) {
+  return safe(async () => {
+    validate("attach", input);
+    const { chat, bot } = await requireChat(input.chatId, actorId);
+    active(chat); posting(chat, bot);
+    return withChatLock(input.chatId, async tx => {
+      const post = await tx.guardPost.findUnique({ where: { id: input.postId } });
+      if (!post || post.chatId !== input.chatId) throw new GuardError("پست پیدا نشد.", 404);
+      if (post.status === "SUCCEEDED" && post.messageId) throw new GuardError("این پست شناسه‌ی پیام دارد؛ برای تازه‌کردن شمارنده‌ها از همگام‌سازی استفاده کنید.", 409);
+      if (post.status !== "UNKNOWN") throw new GuardError("فقط پستی که نتیجه‌ی انتشارش نامشخص مانده است شناسه‌ی دستی می‌پذیرد.", 409);
+      const taken = await tx.guardPost.findFirst({ where: { chatId: input.chatId, messageId: input.messageId } });
+      if (taken) throw new GuardError("این شناسه‌ی پیام قبلاً به پست دیگری نسبت داده شده است.", 409);
+      await tx.guardPost.update({ where: { id: post.id }, data: { status: "SUCCEEDED", messageId: input.messageId } });
+      await tx.guardEvent.create({ data: { requestId: `attach:${randomUUID()}`, chatId: input.chatId, actorId, targetId: post.id, action: "attach", reason: "ثبت دستی شناسه‌ی پیام برای پستی که نتیجه‌ی انتشارش نامشخص ماند", detail: `message_id=${input.messageId}`, status: "SUCCEEDED" } });
+      await refreshKeyboard(tx, post.id);
+      return { status: "SUCCEEDED" as const, postId: post.id, messageId: input.messageId };
     });
   });
 }

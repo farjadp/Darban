@@ -25,4 +25,5 @@ export const adminInput = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("settings"), chatId, waitHours: z.number().int().min(0).max(168), verification: z.boolean(), commentGate: z.boolean(), discussionChatId: chatId.nullable() }),
   z.object({ operation: z.literal("review"), chatId, alertId: z.string().min(1).max(64) }),
   z.object({ operation: z.literal("sync"), chatId, postId: z.string().min(1).max(64) }),
+  z.object({ operation: z.literal("attach"), chatId, postId: z.string().min(1).max(64), messageId: z.number().int().min(1).max(2147483647) }),
 ]);

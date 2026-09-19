@@ -19,7 +19,12 @@ export async function handleVote(callback: NonNullable<Update["callback_query"]>
     const parsed = parseCallback(callback.data ?? "");
     if (!parsed || !callback.message || callback.from.is_bot) return;
     const post = await db.guardPost.findUnique({ where: { id: parsed.postId }, include: { chat: true } });
-    if (!post || !post.chat.active || post.status !== "SUCCEEDED" || post.chatId !== callback.message.chat.id || post.messageId !== callback.message.message_id) return;
+    if (!post || post.chatId !== callback.message.chat.id) return;
+    if (!post.chat.active) { text = "نگهبان این چت غیرفعال است."; return; }
+    // The message is live but this post's publish was never confirmed, so the
+    // vote has nowhere to land. Say that, instead of calling the button invalid.
+    if (post.status !== "SUCCEEDED" || !post.messageId) { text = "نتیجه‌ی انتشار این پست هنوز قطعی نشده است. مدیر باید شناسه‌ی این پیام را در پنل ثبت کند تا رأی‌ها شمرده شوند."; return; }
+    if (post.messageId !== callback.message.message_id) return;
     const liveMember = await getMember(post.chatId, callback.from.id);
     const result = await withChatLock(post.chatId, async tx => {
       const chat = await tx.guardChat.findUniqueOrThrow({ where: { id: post.chatId } });

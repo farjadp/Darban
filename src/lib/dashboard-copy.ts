@@ -108,6 +108,9 @@ const copy = {
   saveSettings: ["ذخیرهٔ تنظیمات", "Save chat settings"],
   review: ["ثبت به‌عنوان بررسی‌شده", "Mark as reviewed"],
   sync: ["همگام‌سازی شمارنده‌ها", "Sync vote counters"],
+  attach: ["ثبت شناسهٔ پیام", "Record message ID"],
+  messageIdLabel: ["شناسهٔ پیام در تلگرام", "Telegram message ID"],
+  attachHelp: ["نتیجهٔ انتشار این پست قطعی نشد. اگر پست در تلگرام منتشر شده است، روی آن راست‌کلیک کنید، «کپی لینک پیام» را بزنید و عدد پایان لینک را اینجا وارد کنید تا دکمه‌های رأی دوباره کار کنند.", "This post's delivery was never confirmed. If it did reach Telegram, right-click it, copy the message link, and enter the number at the end of that link so its voting buttons work again."],
   chatIdLabel: ["شناسهٔ عددی یا نام کاربری کانال یا گروه", "Channel or group numeric ID or username"],
   connectHelp: ["شناسهٔ عددی یا نام کاربری را وارد کنید. ربات باید مدیر باشد و اجازهٔ ارسال پست و محدود کردن اعضا داشته باشد. دسترسی مدیریتی شما در تلگرام بررسی می‌شود.", "Enter a numeric ID or username. The bot must be an admin with permission to post and restrict members. Your Telegram admin access will be verified."],
   postText: ["متن پست", "Post text"],
@@ -163,7 +166,7 @@ export function statusLabel(locale: Locale, status: string): string {
 
 export function actionLabel(locale: Locale, action: string): string {
   const c = dashboardCopy(locale);
-  const labels: Record<string, string> = { ban: c.ban, unban: c.unban, publish: c.publishAction, sync: c.sync, settings: c.settingsAction, connect: c.connect, review: c.reviewAction };
+  const labels: Record<string, string> = { ban: c.ban, unban: c.unban, publish: c.publishAction, sync: c.sync, attach: c.attach, settings: c.settingsAction, connect: c.connect, review: c.reviewAction };
   return labels[action.toLowerCase()] ?? c.recordedAction;
 }
 

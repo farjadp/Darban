@@ -14,7 +14,13 @@ type Props = { disabled?: boolean; locale?: Locale } & (
   | { operation: "settings"; chat: Chat }
   | { operation: "review"; chat: Chat; alertId: string }
   | { operation: "sync"; chat: Chat; postId: string }
+  | { operation: "attach"; chat: Chat; postId: string }
 );
+/** The admin may paste the whole message link; the id is the number it ends with. */
+function messageNumber(raw: string): number {
+  const match = /([0-9]{1,10})\s*$/.exec(raw.trim());
+  return match ? Number(match[1]) : 0;
+}
 const inputClass = "min-h-11 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm leading-6 text-ink placeholder:text-muted focus:border-forest focus:outline-2 focus:outline-offset-2 focus:outline-forest disabled:bg-canvas";
 const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-lg bg-forest px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted";
 
@@ -30,7 +36,7 @@ export function AdminForm(props: Props) {
   const [editorKey, setEditorKey] = useState(0);
   const request = useRef<{ key: string; id: string } | null>(null);
   const inFlight = useRef(false);
-  const labels = { connect: c.connect, publish: c.publish, moderate: props.operation === "moderate" && props.action === "unban" ? c.unban : c.ban, settings: c.saveSettings, review: c.review, sync: c.sync };
+  const labels = { connect: c.connect, publish: c.publish, moderate: props.operation === "moderate" && props.action === "unban" ? c.unban : c.ban, settings: c.saveSettings, review: c.review, sync: c.sync, attach: c.attach };
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,6 +51,7 @@ export function AdminForm(props: Props) {
     if (props.operation === "settings") payload = { ...payload, waitHours: Number(fields.get("waitHours")), verification: fields.get("verification") === "on", commentGate: fields.get("commentGate") === "on", discussionChatId: String(fields.get("discussionChatId") ?? "").trim() || null };
     if (props.operation === "review") payload.alertId = props.alertId;
     if (props.operation === "sync") payload.postId = props.postId;
+    if (props.operation === "attach") payload = { ...payload, postId: props.postId, messageId: messageNumber(String(fields.get("messageId") ?? "")) };
     if (props.operation === "publish" || props.operation === "moderate") {
       const description = props.operation === "publish"
         ? `${c.publishConfirm}\n${c.destination}: ${props.chat.title} (${props.chat.id})\n\n${payload.text}`
@@ -110,6 +117,10 @@ export function AdminForm(props: Props) {
         <p className="break-words text-sm leading-7">{c.account}: <bdi dir="ltr" className="font-mono">{props.targetId}</bdi> · <bdi>{props.chat.title}</bdi> · <bdi dir="ltr">{props.chat.id}</bdi></p>
         <div className="space-y-2"><label htmlFor={`${id}-reason`} className="block text-sm font-medium">{c.actionReason}</label><input id={`${id}-reason`} name="reason" dir="auto" required maxLength={500} placeholder={c.reasonPlaceholder} className={inputClass} aria-describedby={`${id}-moderation-help`} /></div>
         <p id={`${id}-moderation-help`} className="max-w-xl text-sm leading-7 text-muted">{c.moderationWarning}</p>
+      </>}
+      {props.operation === "attach" && <>
+        <p id={`${id}-attach-help`} className="max-w-xl text-sm leading-7 text-muted">{c.attachHelp}</p>
+        <div className="max-w-xs space-y-2"><label htmlFor={`${id}-message`} className="block text-sm font-medium">{c.messageIdLabel}</label><input id={`${id}-message`} name="messageId" required inputMode="numeric" pattern="[^0-9]*[0-9]{1,10}" placeholder="123" dir="ltr" className={inputClass} aria-describedby={`${id}-attach-help`} /></div>
       </>}
       {props.operation === "settings" && <>
         <div className="max-w-xs space-y-2"><label htmlFor={`${id}-hours`} className="block text-sm font-medium">{c.waitHoursLabel}</label><input id={`${id}-hours`} name="waitHours" type="number" min={0} max={168} step={1} required defaultValue={props.chat.waitHours} className={inputClass} aria-describedby={`${id}-hours-help`} /><p id={`${id}-hours-help`} className="text-sm text-muted">{c.waitRange}</p></div>

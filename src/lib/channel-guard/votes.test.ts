@@ -190,6 +190,23 @@ describe("handleVote live gates", () => {
 });
 
 describe("handleVote evidence snapshots", () => {
+  it("tells the voter the post is unconfirmed, instead of calling the button invalid", async () => {
+    mocks.db.guardPost.findUnique.mockResolvedValue({ id: postId, chatId, messageId: null, status: "UNKNOWN", chat });
+    await handleVote(callback());
+    expect(mocks.getMember).not.toHaveBeenCalled();
+    expect(mocks.telegram).toHaveBeenCalledExactlyOnceWith("answerCallbackQuery", expect.objectContaining({
+      callback_query_id: "callback-1", show_alert: true, text: expect.stringContaining("شناسه‌ی این پیام"),
+    }));
+  });
+
+  it("keeps the generic refusal for a button pressed on another chat's message", async () => {
+    mocks.db.guardPost.findUnique.mockResolvedValue({ id: postId, chatId: "-100999", messageId: 42, status: "SUCCEEDED", chat });
+    await handleVote(callback());
+    expect(mocks.telegram).toHaveBeenCalledExactlyOnceWith("answerCallbackQuery", expect.objectContaining({
+      text: "این دکمه برای این پیام معتبر نیست.",
+    }));
+  });
+
   it("snapshots five first voters with original timestamps and never overwrites a per-post alert", async () => {
     const recent = Array.from({ length: 5 }, (_, index) => ({ userId: String(100 + index), first: true, createdAt: new Date(now.getTime() - index * 10_000) }));
     mocks.tx.guardVote.findMany.mockResolvedValue([

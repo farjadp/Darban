@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
     chatAdmin: { findUnique: vi.fn(), upsert: vi.fn() },
     guardChat: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     guardEvent: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    guardPost: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
+    guardPost: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     guardUser: { upsert: vi.fn() },
     guardMember: { upsert: vi.fn(), findMany: vi.fn() },
     guardVote: { findMany: vi.fn() },
@@ -20,7 +20,7 @@ vi.mock("@/lib/db", () => ({ db: mocks.db }));
 vi.mock("./telegram", async (original) => ({ ...await original<typeof import("./telegram")>(), telegram: mocks.telegram, telegramUpload: mocks.telegramUpload, getMember: mocks.getMember }));
 vi.mock("@/lib/auth", async (original) => ({ ...await original<typeof import("@/lib/auth")>(), getUser: mocks.getUser }));
 
-import { connectChat, moderateMember, publishGuardPost, saveSettings, reviewAlert, syncPost } from "./actions";
+import { attachPost, connectChat, moderateMember, publishGuardPost, saveSettings, reviewAlert, syncPost } from "./actions";
 import { TelegramError } from "./telegram";
 import { POST } from "@/app/api/admin/route";
 import { runSetup } from "../../../scripts/setup-channel-guard";
@@ -76,6 +76,7 @@ beforeEach(() => {
     const post = [...posts.values()].find(p => p.id === where.id)!; Object.assign(post, data); return post;
   });
   mocks.db.guardPost.findMany.mockResolvedValue([]);
+  mocks.db.guardPost.findFirst.mockResolvedValue(null);
   mocks.db.guardChat.upsert.mockResolvedValue(chat);
   mocks.db.guardChat.update.mockResolvedValue(chat);
 });
@@ -307,6 +308,56 @@ describe("defensive admin operations", () => {
     posts.set("other", { id: "other", chatId: "-999" });
     await expect(reviewAlert({ chatId, alertId: "alert" }, actorId)).rejects.toMatchObject({ status: 404 });
     await expect(syncPost({ chatId, postId: "other" }, actorId)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("adopting a post Telegram never confirmed", () => {
+  const unconfirmed = () => posts.set(requestId, { id: "post1", chatId, status: "UNKNOWN", messageId: null });
+  beforeEach(() => {
+    mocks.db.guardPost.findUniqueOrThrow.mockImplementation(async ({ where }) => [...posts.values()].find(p => p.id === where.id));
+    mocks.db.guardVote.findMany.mockResolvedValue([]);
+    mocks.db.guardMember.findMany.mockResolvedValue([]);
+  });
+
+  it("claims the live message by writing this post's own keyboard onto it", async () => {
+    unconfirmed();
+    await attachPost({ chatId, postId: "post1", messageId: 77 }, actorId);
+    expect(mocks.telegram).toHaveBeenCalledWith("editMessageReplyMarkup", expect.objectContaining({
+      chat_id: chatId, message_id: 77,
+      reply_markup: { inline_keyboard: [expect.arrayContaining([expect.objectContaining({ callback_data: "v:post1:agree" })])] },
+    }));
+    expect(posts.get(requestId)).toMatchObject({ status: "SUCCEEDED", messageId: 77 });
+    expect([...events.values()][0]).toMatchObject({ action: "attach", targetId: "post1", actorId, status: "SUCCEEDED" });
+  });
+
+  it("keeps the post unconfirmed when Telegram refuses the edit", async () => {
+    unconfirmed();
+    // The row is written before the edit, so undoing it is the transaction's
+    // job; the mock rolls back the same way Postgres would.
+    const commit = mocks.db.$transaction.getMockImplementation()!;
+    mocks.db.$transaction.mockImplementation(async (work: never) => {
+      const snapshot = [...posts].map(([key, post]) => [key, { ...post }] as const);
+      try { return await commit(work); }
+      catch (error) { posts.clear(); for (const [key, post] of snapshot) posts.set(key, post); throw error; }
+    });
+    mocks.telegram.mockRejectedValue(new TelegramError(400, false, false, "message to edit not found"));
+    await expect(attachPost({ chatId, postId: "post1", messageId: 77 }, actorId)).rejects.toBeInstanceOf(TelegramError);
+    expect(posts.get(requestId)).toMatchObject({ status: "UNKNOWN", messageId: null });
+  });
+
+  it("refuses a message id another post already holds, and a post that is already confirmed", async () => {
+    unconfirmed();
+    mocks.db.guardPost.findFirst.mockResolvedValue({ id: "post0", chatId, messageId: 77 });
+    await expect(attachPost({ chatId, postId: "post1", messageId: 77 }, actorId)).rejects.toMatchObject({ status: 409 });
+    mocks.db.guardPost.findFirst.mockResolvedValue(null);
+    posts.set(requestId, { id: "post1", chatId, status: "SUCCEEDED", messageId: 12 });
+    await expect(attachPost({ chatId, postId: "post1", messageId: 77 }, actorId)).rejects.toMatchObject({ status: 409 });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("editMessageReplyMarkup", expect.anything());
+  });
+
+  it("does not adopt a post in a chat the admin did not name", async () => {
+    posts.set(requestId, { id: "other", chatId: "-999", status: "UNKNOWN", messageId: null });
+    await expect(attachPost({ chatId, postId: "other", messageId: 77 }, actorId)).rejects.toMatchObject({ status: 404 });
   });
 });
 

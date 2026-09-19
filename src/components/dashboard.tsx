@@ -50,7 +50,9 @@ function Posts({ data, locale, disabled = false, compact = false }: ViewProps) {
   return <div className="divide-y divide-line">{(compact ? data.posts.slice(0, 3) : data.posts).map((post) => <article key={post.id} className="py-5 first:pt-0 last:pb-0">
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex flex-wrap items-center gap-3"><Status value={post.status} locale={locale} /><span className="text-xs text-muted">{formatDate(post.createdAt, locale)}</span></div><span className="text-xs text-muted">{post.messageId ? <>{c.message} <bdi>{formatNumber(post.messageId, locale)}</bdi></> : c.noMessageId}</span></div>
     <p dir="auto" className={`mt-4 max-w-3xl whitespace-pre-wrap break-words text-sm leading-8 ${compact ? "line-clamp-2" : ""}`}>{post.text}</p>
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-4"><dl className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted">{(["agree", "useful", "question"] as const).map((choice) => <div key={choice} className="flex gap-2"><dt>{c[choice]}</dt><dd className="font-semibold tabular-nums text-ink">{formatNumber(post.votes[choice], locale)}</dd></div>)}</dl>{!compact && data.chat && <AdminForm locale={locale} operation="sync" chat={data.chat} postId={post.id} disabled={disabled || !post.messageId} />}</div>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-4"><dl className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted">{(["agree", "useful", "question"] as const).map((choice) => <div key={choice} className="flex gap-2"><dt>{c[choice]}</dt><dd className="font-semibold tabular-nums text-ink">{formatNumber(post.votes[choice], locale)}</dd></div>)}</dl>{!compact && data.chat && (post.status === "UNKNOWN" && !post.messageId
+      ? <AdminForm locale={locale} operation="attach" chat={data.chat} postId={post.id} disabled={disabled} />
+      : <AdminForm locale={locale} operation="sync" chat={data.chat} postId={post.id} disabled={disabled || !post.messageId} />)}</div>
   </article>)}</div>;
 }
 
