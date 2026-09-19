@@ -20,7 +20,7 @@ const chatId = z.string().regex(/^-\d{1,20}$/);
 const requestId = z.string().uuid();
 export const adminInput = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("connect"), chatId: z.string().regex(/^(?:-\d{1,20}|@[a-zA-Z0-9_]{5,32})$/) }),
-  z.object({ operation: z.literal("publish"), chatId, text: z.string().trim().min(1).max(4096), requestId }),
+  z.object({ operation: z.literal("publish"), chatId, text: z.string().trim().min(1).max(8192), requestId }),
   z.object({ operation: z.literal("moderate"), chatId, targetId: z.string().regex(/^[1-9]\d{0,19}$/), action: z.enum(["ban", "unban"]), reason: z.string().trim().min(3).max(500), requestId }),
   z.object({ operation: z.literal("settings"), chatId, waitHours: z.number().int().min(0).max(168), verification: z.boolean(), commentGate: z.boolean(), discussionChatId: chatId.nullable() }),
   z.object({ operation: z.literal("review"), chatId, alertId: z.string().min(1).max(64) }),

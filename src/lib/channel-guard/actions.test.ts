@@ -14,10 +14,10 @@ const mocks = vi.hoisted(() => ({
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
   },
-  telegram: vi.fn(), getMember: vi.fn(), getUser: vi.fn(),
+  telegram: vi.fn(), telegramUpload: vi.fn(), getMember: vi.fn(), getUser: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
-vi.mock("./telegram", async (original) => ({ ...await original<typeof import("./telegram")>(), telegram: mocks.telegram, getMember: mocks.getMember }));
+vi.mock("./telegram", async (original) => ({ ...await original<typeof import("./telegram")>(), telegram: mocks.telegram, telegramUpload: mocks.telegramUpload, getMember: mocks.getMember }));
 vi.mock("@/lib/auth", async (original) => ({ ...await original<typeof import("@/lib/auth")>(), getUser: mocks.getUser }));
 
 import { connectChat, moderateMember, publishGuardPost, saveSettings, reviewAlert, syncPost } from "./actions";
@@ -192,15 +192,40 @@ describe("defensive admin operations", () => {
     await expect(moderateMember(input, actorId)).rejects.not.toThrow("database secret");
     expect(mutations()).toHaveLength(0);
   });
-  it("publishes plain text exactly once with an initial vote keyboard", async () => {
+  it("publishes once with an initial vote keyboard, and authored angle brackets stay literal", async () => {
     mocks.telegram.mockImplementation(async (method) => method === "sendMessage" ? { message_id: 101 } : true);
     await publishGuardPost({ chatId, text: "<b>Literal</b>", requestId }, actorId);
     await publishGuardPost({ chatId, text: "<b>Literal</b>", requestId }, actorId);
     expect(mutations()).toHaveLength(1);
-    expect(mutations()[0][1]).toMatchObject({ text: "<b>Literal</b>", reply_markup: { inline_keyboard: expect.any(Array) } });
-    expect(mutations()[0][1]).not.toHaveProperty("parse_mode");
+    // Escaped on the wire is what makes Telegram render it as the text the author typed.
+    expect(mutations()[0][1]).toMatchObject({ text: "&lt;b&gt;Literal&lt;/b&gt;", parse_mode: "HTML", reply_markup: { inline_keyboard: expect.any(Array) } });
     expect(posts.get(requestId)).toMatchObject({ status: "SUCCEEDED", messageId: 101 });
     expect(events.get(`publish:${requestId}`)?.status).toBe("SUCCEEDED");
+  });
+  it("turns the author's markers into Telegram formatting", async () => {
+    mocks.telegram.mockImplementation(async (method) => method === "sendMessage" ? { message_id: 102 } : true);
+    await publishGuardPost({ chatId, text: "*پررنگ* و [لینک](https://darban.xyz/)", requestId }, actorId);
+    expect(mutations()[0][1]).toMatchObject({ text: '<b>پررنگ</b> و <a href="https://darban.xyz/">لینک</a>', parse_mode: "HTML" });
+  });
+  it("refuses a post longer than Telegram accepts, counting the text and not the markers", async () => {
+    await expect(publishGuardPost({ chatId, text: `*${"ا".repeat(4097)}*`, requestId }, actorId)).rejects.toMatchObject({ status: 400 });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("sendMessage", expect.anything());
+    // 4096 of text plus two markers is still within the limit.
+    mocks.telegram.mockImplementation(async (method) => method === "sendMessage" ? { message_id: 103 } : true);
+    await expect(publishGuardPost({ chatId, text: `*${"ا".repeat(4096)}*`, requestId }, actorId)).resolves.toMatchObject({ status: "SUCCEEDED" });
+  });
+  it("sends a photo as an upload with the text as its caption, under the caption limit", async () => {
+    mocks.telegramUpload.mockResolvedValue({ message_id: 104, photo: [{ file_id: "small" }, { file_id: "largest" }] });
+    const photo = { blob: new Blob([new Uint8Array([1, 2, 3])]), filename: "cover.jpg" };
+    await publishGuardPost({ chatId, text: "*عنوان*", requestId }, actorId, photo);
+    expect(mocks.telegram).not.toHaveBeenCalledWith("sendMessage", expect.anything());
+    expect(mocks.telegramUpload).toHaveBeenCalledWith("sendPhoto", expect.objectContaining({ chat_id: chatId, caption: "<b>عنوان</b>", parse_mode: "HTML" }), expect.objectContaining({ field: "photo", filename: "cover.jpg" }));
+    expect(posts.get(requestId)).toMatchObject({ status: "SUCCEEDED", messageId: 104, photoFileId: "largest" });
+  });
+  it("refuses a caption longer than a caption may be, even though a text post could hold it", async () => {
+    const photo = { blob: new Blob([new Uint8Array([1])]), filename: "cover.jpg" };
+    await expect(publishGuardPost({ chatId, text: "ا".repeat(1025), requestId }, actorId, photo)).rejects.toMatchObject({ status: 400 });
+    expect(mocks.telegramUpload).not.toHaveBeenCalled();
   });
   it("never blindly resends an ambiguous publish", async () => {
     mocks.telegram.mockRejectedValue(new TelegramError(0, true));

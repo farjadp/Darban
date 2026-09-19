@@ -4,7 +4,8 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { Chat } from "@/lib/dashboard";
 import { dashboardCopy, mutationError } from "@/lib/dashboard-copy";
-import { formatNumber, pathFor, type Locale } from "@/lib/i18n";
+import { pathFor, type Locale } from "@/lib/i18n";
+import { PostEditor } from "@/components/post-editor";
 
 type Props = { disabled?: boolean; locale?: Locale } & (
   | { operation: "connect" }
@@ -24,7 +25,9 @@ export function AdminForm(props: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [length, setLength] = useState(0);
+  const [photo, setPhoto] = useState<File | null>(null);
+  // A published post must leave an empty editor; the editor owns its own state, so it is remounted rather than reset.
+  const [editorKey, setEditorKey] = useState(0);
   const request = useRef<{ key: string; id: string } | null>(null);
   const inFlight = useRef(false);
   const labels = { connect: c.connect, publish: c.publish, moderate: props.operation === "moderate" && props.action === "unban" ? c.unban : c.ban, settings: c.saveSettings, review: c.review, sync: c.sync };
@@ -55,7 +58,18 @@ export function AdminForm(props: Props) {
     setPending(true);
     setFeedback("");
     try {
-      const response = await fetch("/api/admin", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "x-darban-locale": locale }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30_000) });
+      const withPhoto = props.operation === "publish" && photo;
+      let body: BodyInit = JSON.stringify(payload);
+      const headers: Record<string, string> = { "Content-Type": "application/json", "x-darban-locale": locale };
+      if (withPhoto) {
+        // multipart is the only way to hand Telegram a file it has not seen.
+        const form = new FormData();
+        for (const [key, value] of Object.entries(payload)) form.append(key, String(value));
+        form.append("photo", photo);
+        body = form;
+        delete headers["Content-Type"];
+      }
+      const response = await fetch("/api/admin", { method: "POST", credentials: "same-origin", headers, body, signal: AbortSignal.timeout(withPhoto ? 90_000 : 30_000) });
       const result = await response.json();
       if (!response.ok || result.ok !== true) {
         setFeedback(mutationError(locale, response.status, result.error, result.detail));
@@ -69,7 +83,8 @@ export function AdminForm(props: Props) {
       setFeedback(localizedWarning ? `${message} ${localizedWarning}` : message);
       if (props.operation === "publish" && status === "SUCCEEDED") {
         form.reset();
-        setLength(0);
+        setPhoto(null);
+        setEditorKey((key) => key + 1);
         request.current = null;
       }
     } catch {
@@ -82,14 +97,13 @@ export function AdminForm(props: Props) {
   }
 
   return <form onSubmit={submit} aria-label={labels[props.operation]} aria-busy={pending} className="space-y-3 text-start">
-    <fieldset disabled={pending || props.disabled} className="min-w-0 space-y-4 disabled:opacity-75">
+    <fieldset disabled={pending || (props.disabled && props.operation !== "publish")} className="min-w-0 space-y-4 disabled:opacity-75">
       {props.operation === "connect" && <>
         <div className="space-y-2"><label htmlFor={`${id}-chat`} className="block text-sm font-medium">{c.chatIdLabel}</label><input id={`${id}-chat`} name="chatId" required pattern="(?:-[0-9]{1,20}|@[a-zA-Z0-9_]{5,32})" placeholder="@channel_name" dir="ltr" className={inputClass} aria-describedby={`${id}-chat-help`} /></div>
         <p id={`${id}-chat-help`} className="text-sm leading-7 text-muted">{c.connectHelp} <bdi dir="ltr">-1001234567890</bdi> · <bdi dir="ltr">@channel_name</bdi></p>
       </>}
       {props.operation === "publish" && <>
-        <div className="space-y-2"><label htmlFor={`${id}-text`} className="block text-sm font-medium">{c.postText}</label><textarea id={`${id}-text`} name="text" dir="auto" required minLength={1} maxLength={4096} rows={6} onChange={(event) => setLength(event.target.value.length)} placeholder={c.postPlaceholder} className={inputClass} aria-describedby={`${id}-text-help`} /></div>
-        <p id={`${id}-text-help`} className="text-sm text-muted">{formatNumber(length, locale)} {c.of} {formatNumber(4096, locale)} {c.characterHelp}</p>
+        <div className="space-y-2"><span className="block text-sm font-medium">{c.postText}</span><PostEditor key={editorKey} locale={locale} disabled={pending} onPhotoChange={setPhoto} /></div>
         <p className="break-words text-sm text-muted">{c.destination}: <bdi>{props.chat.title}</bdi> · <bdi dir="ltr">{props.chat.id}</bdi></p>
       </>}
       {props.operation === "moderate" && <>
@@ -103,7 +117,7 @@ export function AdminForm(props: Props) {
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="commentGate" defaultChecked={props.chat.commentGate} className="size-5 shrink-0 accent-forest" />{c.gateComments}</label>
         <div className="max-w-md space-y-2"><label htmlFor={`${id}-discussion`} className="block text-sm font-medium">{c.discussionId}</label><input id={`${id}-discussion`} name="discussionChatId" pattern="-?[0-9]+" dir="ltr" defaultValue={props.chat.discussionChatId ?? ""} placeholder="-1001234567890" className={inputClass} aria-describedby={`${id}-discussion-help`} /><p id={`${id}-discussion-help`} className="text-sm leading-7 text-muted">{c.discussionHelp}</p></div>
       </>}
-      <button type="submit" className={buttonClass}>{pending ? c.sending : labels[props.operation]}</button>
+      <button type="submit" disabled={pending || props.disabled} className={buttonClass}>{pending ? c.sending : labels[props.operation]}</button>
     </fieldset>
     {feedback && <p role="alert" className="max-w-2xl rounded-lg border border-line bg-canvas px-4 py-3 text-sm leading-7">{feedback}</p>}
   </form>;

@@ -5,9 +5,15 @@ import { assertActiveAccount, assertTelegramAdmin, GuardError, hasAdminRights, r
 import { adminInput } from "./input";
 import { isPresent, voteKeyboard } from "./protocol";
 import { refreshKeyboard, withChatLock } from "./store";
-import { botId, getMember, telegram, TelegramError, type ChatInfo, type ChatMember } from "./telegram";
+import { botId, getMember, telegram, telegramUpload, TelegramError, type ChatInfo, type ChatMember } from "./telegram";
+import { render } from "./markup";
 
 type PublishInput = { chatId: string; text: string; requestId: string };
+/** One photo, already read and checked by the route. Telegram refuses an inline keyboard on a media group, so never more than one. */
+export type PostPhoto = { blob: Blob; filename: string };
+// Telegram counts the rendered text, and caps a caption far below a message.
+const TEXT_LIMIT = 4096;
+const CAPTION_LIMIT = 1024;
 type ModerationInput = { chatId: string; targetId: string; action: "ban" | "unban"; reason: string; requestId: string };
 type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; discussionChatId: string | null };
 const banWarning = "درخواست بدون حذف پیام‌ها ارسال شد؛ تلگرام ممکن است طبق قواعد خود پیام‌ها را حذف کند و عدم حذف قابل تضمین نیست.";
@@ -75,9 +81,12 @@ export async function connectChat(chatId: string, actorId: string) {
   });
 }
 
-export async function publishGuardPost(input: PublishInput, actorId: string) {
+export async function publishGuardPost(input: PublishInput, actorId: string, photo?: PostPhoto) {
   return safe(async () => {
     validate("publish", input);
+    const body = render(input.text);
+    const limit = photo ? CAPTION_LIMIT : TEXT_LIMIT;
+    if (body.length > limit) throw new GuardError(photo ? `متن همراه عکس حداکثر ${CAPTION_LIMIT.toLocaleString("fa-IR")} نویسه است.` : `متن پست حداکثر ${TEXT_LIMIT.toLocaleString("fa-IR")} نویسه است.`, 400);
     const { chat, bot } = await requireChat(input.chatId, actorId);
     active(chat); posting(chat, bot);
     const startedAt = Date.now();
@@ -104,10 +113,13 @@ export async function publishGuardPost(input: PublishInput, actorId: string) {
       });
       const { post, event } = reservation;
       if (reservation.replayed) return { ...replay(event), postId: post.id, messageId: post.messageId };
-      let message: { message_id: number };
+      let message: { message_id: number; photo?: { file_id: string }[] };
       try {
         requireSendBudget(startedAt);
-        message = await telegram<{ message_id: number }>("sendMessage", { chat_id: input.chatId, text: input.text, reply_markup: voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }) });
+        const reply_markup = JSON.stringify(voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }));
+        message = photo
+          ? await telegramUpload<{ message_id: number; photo?: { file_id: string }[] }>("sendPhoto", { chat_id: input.chatId, caption: body.html, parse_mode: "HTML", reply_markup }, { field: "photo", blob: photo.blob, filename: photo.filename })
+          : await telegram<{ message_id: number }>("sendMessage", { chat_id: input.chatId, text: body.html, parse_mode: "HTML", link_preview_options: { is_disabled: false }, reply_markup: voteKeyboard(post.id, { agree: 0, useful: 0, question: 0 }) });
         if (!Number.isSafeInteger(message?.message_id) || message.message_id <= 0) throw new TelegramError(0, true);
       } catch (error) {
         const result = failure(error);
@@ -119,7 +131,7 @@ export async function publishGuardPost(input: PublishInput, actorId: string) {
       }
       try {
         await db.$transaction(async tx => {
-          await tx.guardPost.update({ where: { id: post.id }, data: { status: "SUCCEEDED", messageId: message.message_id } });
+          await tx.guardPost.update({ where: { id: post.id }, data: { status: "SUCCEEDED", messageId: message.message_id, photoFileId: message.photo?.at(-1)?.file_id ?? null } });
           await tx.guardEvent.update({ where: { id: event.id }, data: { status: "SUCCEEDED" } });
         });
       } catch {
