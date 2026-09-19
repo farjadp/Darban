@@ -15,7 +15,7 @@ export type PostPhoto = { blob: Blob; filename: string };
 const TEXT_LIMIT = 4096;
 const CAPTION_LIMIT = 1024;
 type ModerationInput = { chatId: string; targetId: string; action: "ban" | "unban"; reason: string; requestId: string };
-type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; deleteJoinMessages?: boolean; lockCommands?: boolean; lockLinks?: boolean; discussionChatId: string | null };
+type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; deleteJoinMessages?: boolean; lockCommands?: boolean; lockLinks?: boolean; lockMedia?: boolean; discussionChatId: string | null };
 type AttachInput = { chatId: string; postId: string; messageId: number };
 const banWarning = "درخواست بدون حذف پیام‌ها ارسال شد؛ تلگرام ممکن است طبق قواعد خود پیام‌ها را حذف کند و عدم حذف قابل تضمین نیست.";
 const databaseMessage = "ثبت یا خواندن اطلاعات ممکن نشد. نتیجه را در سوابق بررسی کنید؛ عملیات را کورکورانه تکرار نکنید.";
@@ -217,13 +217,13 @@ export async function saveSettings(input: SettingsInput, actorId: string) {
       active(linked.chat);
       if (linked.chat.type !== "supergroup") throw new GuardError("گروه گفتگو باید سوپرگروه باشد.");
       deletion(linked.bot);
-    } else if (input.commentGate || input.deleteJoinMessages || input.lockCommands || input.lockLinks) {
+    } else if (input.commentGate || input.deleteJoinMessages || input.lockCommands || input.lockLinks || input.lockMedia) {
       if (chat.type !== "supergroup" && chat.type !== "group") throw new GuardError("برای این تنظیمات، گروه را مشخص کنید.");
       deletion(bot);
     }
     return withChatLock(input.chatId, async tx => {
       const chatId = input.chatId;
-      const settings = { waitHours: input.waitHours, verification: input.verification, commentGate: input.commentGate, deleteJoinMessages: input.deleteJoinMessages ?? false, lockCommands: input.lockCommands ?? false, lockLinks: input.lockLinks ?? false, discussionChatId: input.discussionChatId };
+      const settings = { waitHours: input.waitHours, verification: input.verification, commentGate: input.commentGate, deleteJoinMessages: input.deleteJoinMessages ?? false, lockCommands: input.lockCommands ?? false, lockLinks: input.lockLinks ?? false, lockMedia: input.lockMedia ?? false, discussionChatId: input.discussionChatId };
       const updated = await tx.guardChat.update({ where: { id: chatId }, data: settings });
       await tx.guardEvent.create({ data: { requestId: `settings:${randomUUID()}`, chatId, actorId, action: "settings", reason: "تغییر تنظیمات با درخواست صریح مدیر", detail: JSON.stringify(settings), status: "SUCCEEDED" } });
       return updated;

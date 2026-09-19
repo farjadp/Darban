@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, detectMediaType, isMediaMessage } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -85,6 +85,40 @@ describe("link and mention detection", () => {
     expect(hasLinkOrMention({ text: "سلام دوستان، روزتون بخیر" })).toBe(false);
     expect(hasLinkOrMention({ text: "" })).toBe(false);
     expect(hasLinkOrMention({})).toBe(false);
+  });
+});
+
+describe("media detection", () => {
+  it("detects photos", () => {
+    expect(detectMediaType({ photo: [{ file_id: "1" }] })).toBe("photo");
+    expect(isMediaMessage({ photo: [{ file_id: "1" }] })).toBe(true);
+  });
+  it("detects videos and animations/gifs", () => {
+    expect(detectMediaType({ video: { file_id: "v1" } })).toBe("video");
+    expect(detectMediaType({ animation: { file_id: "a1" } })).toBe("animation");
+    expect(isMediaMessage({ video: { file_id: "v1" } })).toBe(true);
+    expect(isMediaMessage({ animation: { file_id: "a1" } })).toBe(true);
+  });
+  it("detects stickers", () => {
+    expect(detectMediaType({ sticker: { file_id: "s1" } })).toBe("sticker");
+    expect(isMediaMessage({ sticker: { file_id: "s1" } })).toBe(true);
+  });
+  it("detects audio and voice notes", () => {
+    expect(detectMediaType({ audio: { file_id: "au1" } })).toBe("audio");
+    expect(detectMediaType({ voice: { file_id: "vo1" } })).toBe("voice");
+    expect(isMediaMessage({ audio: { file_id: "au1" } })).toBe(true);
+    expect(isMediaMessage({ voice: { file_id: "vo1" } })).toBe(true);
+  });
+  it("detects documents and video notes", () => {
+    expect(detectMediaType({ document: { file_id: "d1" } })).toBe("document");
+    expect(detectMediaType({ video_note: { file_id: "vn1" } })).toBe("video_note");
+    expect(isMediaMessage({ document: { file_id: "d1" } })).toBe(true);
+    expect(isMediaMessage({ video_note: { file_id: "vn1" } })).toBe(true);
+  });
+  it("returns null / false for plain text messages", () => {
+    expect(detectMediaType({ photo: [] })).toBeNull();
+    expect(detectMediaType({})).toBeNull();
+    expect(isMediaMessage({})).toBe(false);
   });
 });
 

@@ -110,6 +110,42 @@ describe("webhook behavior", () => {
       expect.objectContaining({ data: expect.objectContaining({ action: "LINK_DELETE" }) })
     );
   });
+  it("deletes media messages sent by regular members when lockMedia is enabled", async () => {
+    const group = { id: "-200", lockMedia: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 12,
+      message: {
+        message_id: 10,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "2", first_name: "عضو عادی" },
+        photo: [{ file_id: "photo_123" }],
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 10 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ chatId: "-200", action: "MEDIA_DELETE" }) })
+    );
+  });
+  it("allows media messages sent by admins even when lockMedia is enabled", async () => {
+    const group = { id: "-200", lockMedia: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "administrator" });
+    await handleUpdate({
+      update_id: 13,
+      message: {
+        message_id: 11,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "3", first_name: "مدیر گروه" },
+        photo: [{ file_id: "photo_admin" }],
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "MEDIA_DELETE" }) })
+    );
+  });
   it("does not verify /start commands in public groups", async () => {
     mocks.db.guardChat.findFirst.mockResolvedValue(null);
     await handleUpdate({ update_id: 1, message: { message_id: 1, chat: { id: "-100", type: "supergroup" }, from: { id: "1", first_name: "عضو" }, text: "/start" } });

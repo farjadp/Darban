@@ -69,5 +69,41 @@ export function hasLinkOrMention(message: {
   return linkRegex.test(combined);
 }
 
+export type MediaType = "photo" | "video" | "animation" | "sticker" | "audio" | "voice" | "document" | "video_note";
+
+export function detectMediaType(message: {
+  photo?: unknown;
+  video?: unknown;
+  animation?: unknown;
+  sticker?: unknown;
+  audio?: unknown;
+  voice?: unknown;
+  document?: unknown;
+  video_note?: unknown;
+}): MediaType | null {
+  if (Array.isArray(message.photo) && message.photo.length > 0) return "photo";
+  if (message.video) return "video";
+  if (message.animation) return "animation";
+  if (message.sticker) return "sticker";
+  if (message.audio) return "audio";
+  if (message.voice) return "voice";
+  if (message.video_note) return "video_note";
+  if (message.document) return "document";
+  return null;
+}
+
+export function isMediaMessage(message: {
+  photo?: unknown;
+  video?: unknown;
+  animation?: unknown;
+  sticker?: unknown;
+  audio?: unknown;
+  voice?: unknown;
+  document?: unknown;
+  video_note?: unknown;
+}): boolean {
+  return detectMediaType(message) !== null;
+}
+
 
 
