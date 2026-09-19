@@ -144,5 +144,60 @@ export function isForwardedMessage(message: {
   return detectForwardOrigin(message) !== null;
 }
 
+/**
+ * بررسی اینکه آیا پیام حاوی ایموجی است (شامل ایموجی یونیکد، کاستوم ایموجی تلگرام، یا تاس/آیکون متحرک)
+ */
+export function hasEmoji(message: {
+  text?: string;
+  caption?: string;
+  entities?: Array<{ type: string; offset?: number; length?: number }>;
+  caption_entities?: Array<{ type: string; offset?: number; length?: number }>;
+  dice?: unknown;
+}): boolean {
+  if (message.dice) return true;
+  const entities = [...(message.entities ?? []), ...(message.caption_entities ?? [])];
+  if (entities.some((e) => e.type === "custom_emoji")) return true;
+  const text = message.text ?? message.caption ?? "";
+  return /\p{Extended_Pictographic}/u.test(text);
+}
+
+/**
+ * بررسی اینکه آیا پیام صرفاً و فقط از ایموجی تشکیل شده است (بدون محتوای متنی معنادار)
+ */
+export function isEmojiOnly(message: {
+  text?: string;
+  caption?: string;
+  entities?: Array<{ type: string; offset?: number; length?: number }>;
+  caption_entities?: Array<{ type: string; offset?: number; length?: number }>;
+  dice?: unknown;
+}): boolean {
+  if (message.dice) return true;
+  const text = message.text ?? message.caption ?? "";
+  if (!text.trim()) return false;
+  const entities = [...(message.entities ?? []), ...(message.caption_entities ?? [])];
+  const hasCustom = entities.some((e) => e.type === "custom_emoji");
+  const hasUni = /\p{Extended_Pictographic}/u.test(text);
+  if (!hasCustom && !hasUni) return false;
+
+  let cleanText = text;
+  // حذف کاستوم ایموجی‌ها از انتهای متن جهت حفظ ایندکس‌های offset
+  const customEntities = entities
+    .filter((e): e is { type: string; offset: number; length: number } => e.type === "custom_emoji" && typeof e.offset === "number" && typeof e.length === "number")
+    .sort((a, b) => b.offset - a.offset);
+  for (const ent of customEntities) {
+    cleanText = cleanText.slice(0, ent.offset) + cleanText.slice(ent.offset + ent.length);
+  }
+
+  // حذف ایموجی‌های یونیکد، اصلاح‌کننده‌های رنگ پوست، انتخابگرهای فرم و نویسه‌های کنترلی
+  const stripped = cleanText
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "")
+    .replace(/[\uFE00-\uFE0F]/gu, "")
+    .replace(/[\u200B-\u200D\u200E\u200F\uFEFF]/gu, "")
+    .replace(/\s+/gu, "");
+
+  return stripped.length === 0;
+}
+
 
 

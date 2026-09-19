@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -149,6 +149,50 @@ describe("forward detection", () => {
   it("returns null / false for normal messages", () => {
     expect(detectForwardOrigin({})).toBeNull();
     expect(isForwardedMessage({})).toBe(false);
+  });
+});
+
+describe("emoji detection", () => {
+  it("detects standard unicode emojis in text and caption", () => {
+    expect(hasEmoji({ text: "سلام 😀 خوبی؟" })).toBe(true);
+    expect(hasEmoji({ text: "🔥" })).toBe(true);
+    expect(hasEmoji({ text: "👨‍👩‍👧‍👦" })).toBe(true);
+    expect(hasEmoji({ caption: "تصویر همراه با ❤️" })).toBe(true);
+    expect(hasEmoji({ text: "سلام خوبی بدون ایموجی" })).toBe(false);
+    expect(hasEmoji({ text: "12345 Hello World!" })).toBe(false);
+  });
+
+  it("detects telegram custom emojis in entities and captions", () => {
+    expect(hasEmoji({ text: "پیام خاص", entities: [{ type: "custom_emoji", offset: 0, length: 4 }] })).toBe(true);
+    expect(hasEmoji({ caption: "توضیح", caption_entities: [{ type: "custom_emoji", offset: 0, length: 2 }] })).toBe(true);
+  });
+
+  it("detects dice as emoji", () => {
+    expect(hasEmoji({ dice: { emoji: "🎲", value: 6 } })).toBe(true);
+    expect(isEmojiOnly({ dice: { emoji: "🎲", value: 6 } })).toBe(true);
+  });
+
+  it("detects messages that are solely emoji (empty emoji / spam)", () => {
+    expect(isEmojiOnly({ text: "😀" })).toBe(true);
+    expect(isEmojiOnly({ text: "🔥 🚀 🙌" })).toBe(true);
+    expect(isEmojiOnly({ text: "👨‍👩‍👧‍👦" })).toBe(true);
+    expect(isEmojiOnly({ text: "❤️❤️❤️" })).toBe(true);
+    expect(isEmojiOnly({ text: "✨ 💯" })).toBe(true);
+    expect(isEmojiOnly({ text: "   🎉   " })).toBe(true);
+  });
+
+  it("rejects messages with text or numbers as not emoji-only", () => {
+    expect(isEmojiOnly({ text: "سلام 😀" })).toBe(false);
+    expect(isEmojiOnly({ text: "😀 how are you" })).toBe(false);
+    expect(isEmojiOnly({ text: "123 😀" })).toBe(false);
+    expect(isEmojiOnly({ text: "فقط متن بدون شکلک" })).toBe(false);
+    expect(isEmojiOnly({ text: "" })).toBe(false);
+    expect(isEmojiOnly({ text: "   " })).toBe(false);
+  });
+
+  it("handles custom emoji only vs mixed with text", () => {
+    expect(isEmojiOnly({ text: "abc", entities: [{ type: "custom_emoji", offset: 0, length: 3 }] })).toBe(true);
+    expect(isEmojiOnly({ text: "abc salam", entities: [{ type: "custom_emoji", offset: 0, length: 3 }] })).toBe(false);
   });
 });
 

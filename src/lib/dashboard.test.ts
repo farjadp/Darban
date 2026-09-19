@@ -20,7 +20,7 @@ import { candidateIds, dashboardHref, loadDashboard, parseView, sampleDashboard,
 const adminId = "11";
 const chat: Chat = {
   id: "-100123", title: "کانال آزمون", type: "channel", username: null, active: true,
-  waitHours: 24, verification: true, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, discussionChatId: null,
+  waitHours: 24, verification: true, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null,
 };
 const scope = { admins: { some: { userId: adminId } } };
 const where = { chatId: chat.id, chat: scope };

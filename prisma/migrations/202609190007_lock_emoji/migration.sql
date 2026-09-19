@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "GuardChat" ADD COLUMN "lockEmoji" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "GuardChat" ADD COLUMN "lockEmptyEmoji" BOOLEAN NOT NULL DEFAULT false;

@@ -46,6 +46,8 @@ function Rules({ chat, locale }: { chat: Chat; locale: Locale }) {
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockLinks}</dt><dd className="font-medium">{chat.lockLinks ? c.enabled : c.disabled}</dd></div>
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockMedia}</dt><dd className="font-medium">{chat.lockMedia ? c.enabled : c.disabled}</dd></div>
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockForwards}</dt><dd className="font-medium">{chat.lockForwards ? c.enabled : c.disabled}</dd></div>
+    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockEmoji}</dt><dd className="font-medium">{chat.lockEmoji ? c.enabled : c.disabled}</dd></div>
+    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockEmptyEmoji}</dt><dd className="font-medium">{chat.lockEmptyEmoji ? c.enabled : c.disabled}</dd></div>
   </dl>;
 }
 
@@ -126,7 +128,7 @@ export function Dashboard({ data, view, admin, preview = false, configurationRea
       {chat && view === "members" && <Section title={c.members} description={c.membersDescription}><div className="mb-6 space-y-3"><Note>{c.observedWarning}</Note><Note>{c.joinWarning}</Note><Note>{c.verificationWarning}</Note></div><Members data={data} locale={locale} disabled={disabled} /></Section>}
       {chat && view === "alerts" && <Section title={c.reviewQueue} description={c.alertsDescription}><Alerts data={data} locale={locale} disabled={disabled} /></Section>}
       {chat && view === "events" && <Section title={c.events}><div className="mb-6"><Note>{c.unknownWarning}</Note></div><Events data={data} locale={locale} /></Section>}
-      {chat && view === "settings" && <Section title={c.rules} description={c.selectedOnly}><div className="max-w-3xl"><div className="mb-7 space-y-4"><Note>{c.nativeWarning}</Note><Note>{c.joinWarning}</Note><Note>{c.verificationWarning}</Note></div><AdminForm key={`${chat.id}-${chat.waitHours}-${chat.verification}-${chat.commentGate}-${chat.deleteJoinMessages}-${chat.lockCommands}-${chat.lockLinks}-${chat.lockMedia}-${chat.lockForwards}-${chat.discussionChatId}`} locale={locale} operation="settings" chat={chat} disabled={disabled} /></div></Section>}
+      {chat && view === "settings" && <Section title={c.rules} description={c.selectedOnly}><div className="max-w-3xl"><div className="mb-7 space-y-4"><Note>{c.nativeWarning}</Note><Note>{c.joinWarning}</Note><Note>{c.verificationWarning}</Note></div><AdminForm key={`${chat.id}-${chat.waitHours}-${chat.verification}-${chat.commentGate}-${chat.deleteJoinMessages}-${chat.lockCommands}-${chat.lockLinks}-${chat.lockMedia}-${chat.lockForwards}-${chat.lockEmoji}-${chat.lockEmptyEmoji}-${chat.discussionChatId}`} locale={locale} operation="settings" chat={chat} disabled={disabled} /></div></Section>}
 
       {(view === "overview" || !chat) && <Section id="connect" title={c.yourChats} description={c.chatScope}>
         {chats.length > 0 && <ul className="mb-7 divide-y divide-line">{chats.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><Link href={href("overview", item.id)} className={textLink}><bdi className="break-words">{item.title}</bdi></Link><div className="flex flex-wrap items-center gap-4"><bdi dir="ltr" className="font-mono text-xs text-muted">{item.id}</bdi><span className="text-xs text-muted">{item.active ? c.active : c.inactive}</span></div></li>)}</ul>}

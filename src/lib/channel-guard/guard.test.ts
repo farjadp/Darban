@@ -202,6 +202,92 @@ describe("webhook behavior", () => {
       expect.objectContaining({ data: expect.objectContaining({ action: "FORWARD_DELETE" }) })
     );
   });
+  it("deletes messages containing emoji when lockEmoji is enabled for non-admins", async () => {
+    const group = { id: "-200", lockEmoji: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member", user: { id: 10 } });
+    await handleUpdate({
+      update_id: 17,
+      message: {
+        message_id: 15,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "10", first_name: "عضو" },
+        text: "سلام به همگی 😀",
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 15 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          chatId: "-200",
+          targetId: "10",
+          action: "EMOJI_DELETE",
+          actorId: "system:emoji-lock",
+        }),
+      })
+    );
+  });
+  it("exempts admins from emoji deletion when lockEmoji is enabled", async () => {
+    const group = { id: "-200", lockEmoji: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "administrator", user: { id: 10 } });
+    await handleUpdate({
+      update_id: 18,
+      message: {
+        message_id: 16,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "10", first_name: "مدیر" },
+        text: "اعلامیه رسمی مدیر 📢",
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "EMOJI_DELETE" }) })
+    );
+  });
+  it("deletes emoji-only spam when lockEmptyEmoji is enabled", async () => {
+    const group = { id: "-200", lockEmoji: false, lockEmptyEmoji: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member", user: { id: 10 } });
+    await handleUpdate({
+      update_id: 19,
+      message: {
+        message_id: 17,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "10", first_name: "عضو" },
+        text: "🔥 🚀 🙌",
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 17 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          chatId: "-200",
+          targetId: "10",
+          action: "EMOJI_DELETE",
+          actorId: "system:emoji-lock",
+        }),
+      })
+    );
+  });
+  it("allows mixed text and emoji when only lockEmptyEmoji is enabled", async () => {
+    const group = { id: "-200", lockEmoji: false, lockEmptyEmoji: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member", user: { id: 10 } });
+    await handleUpdate({
+      update_id: 20,
+      message: {
+        message_id: 18,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "10", first_name: "عضو" },
+        text: "سلام دوستان روزتون بخیر 🌸",
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "EMOJI_DELETE" }) })
+    );
+  });
   it("does not verify /start commands in public groups", async () => {
     mocks.db.guardChat.findFirst.mockResolvedValue(null);
     await handleUpdate({ update_id: 1, message: { message_id: 1, chat: { id: "-100", type: "supergroup" }, from: { id: "1", first_name: "عضو" }, text: "/start" } });
