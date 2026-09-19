@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, result }, { headers });
   } catch (error) {
     if (error instanceof GuardError || error instanceof AuthError) return Response.json({ ok: false, error: error.message }, { status: error.status, headers });
-    if (error instanceof TelegramError) return Response.json({ ok: false, error: error.message, uncertain: error.uncertain }, { status: error.uncertain ? 409 : error.code === 429 ? 429 : 502, headers });
+    if (error instanceof TelegramError) return Response.json({ ok: false, error: error.message, detail: error.description || undefined, uncertain: error.uncertain }, { status: error.uncertain ? 409 : error.code === 429 ? 429 : 502, headers });
     return Response.json({ ok: false, error: "سرویس در دسترس نیست؛ پیش از تکرار، وضعیت عملیات را بررسی کنید." }, { status: 503, headers });
   }
 }

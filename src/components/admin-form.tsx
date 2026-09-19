@@ -58,7 +58,7 @@ export function AdminForm(props: Props) {
       const response = await fetch("/api/admin", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "x-darban-locale": locale }, body: JSON.stringify(payload), signal: AbortSignal.timeout(30_000) });
       const result = await response.json();
       if (!response.ok || result.ok !== true) {
-        setFeedback(mutationError(locale, response.status, result.error));
+        setFeedback(mutationError(locale, response.status, result.error, result.detail));
         return;
       }
       const status = result.result?.status ?? result.status;

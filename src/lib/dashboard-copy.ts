@@ -167,9 +167,12 @@ export function actionLabel(locale: Locale, action: string): string {
   return labels[action.toLowerCase()] ?? c.recordedAction;
 }
 
-export function mutationError(locale: Locale, status: number, error: unknown): string {
+export function mutationError(locale: Locale, status: number, error: unknown, detail?: unknown): string {
   const c = dashboardCopy(locale);
   if (status === 409) return c.conflictError;
   if (typeof error === "string" && error.trim() && (locale === "fa" || !/[\u0600-\u06ff]/.test(error))) return error;
+  // The localized message was unusable here, but Telegram's own description is
+  // English and is usually the one line that says what to fix.
+  if (typeof detail === "string" && detail.trim()) return `${c.requestError} (${detail.trim().slice(0, 200)})`;
   return c.requestError;
 }
