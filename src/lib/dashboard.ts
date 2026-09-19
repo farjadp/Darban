@@ -2,7 +2,7 @@ export const views = ["overview", "posts", "members", "alerts", "events", "setti
 export type View = (typeof views)[number];
 export type Chat = {
   id: string; title: string; type: string; username: string | null; active: boolean;
-  waitHours: number; verification: boolean; commentGate: boolean; discussionChatId: string | null;
+  waitHours: number; verification: boolean; commentGate: boolean; deleteJoinMessages: boolean; lockCommands: boolean; lockLinks: boolean; discussionChatId: string | null;
 };
 export type DashboardData = {
   chats: Chat[];
@@ -77,7 +77,7 @@ export async function loadDashboard(adminId: string, requestedChat?: string): Pr
   };
 }
 export function sampleDashboard(): DashboardData {
-  const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, discussionChatId: "-100000000002" };
+  const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, deleteJoinMessages: false, lockCommands: false, lockLinks: false, discussionChatId: "-100000000002" };
   const members: DashboardData["members"] = [
     { userId: "900000001", name: "کاربر نمونهٔ اول", joinedAt: "2026-09-17T08:00:00Z", verifiedAt: "2026-09-17T08:10:00Z", firstVotedAt: "2026-09-18T09:00:00Z", banned: false, present: true },
     { userId: "900000002", name: "کاربر نمونهٔ دوم", joinedAt: "2026-09-17T07:00:00Z", verifiedAt: "2026-09-17T07:10:00Z", firstVotedAt: "2026-09-18T09:00:03Z", banned: false, present: true },

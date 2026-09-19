@@ -21,6 +21,95 @@ describe("webhook behavior", () => {
     expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 4 });
     expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ chatId: "-100", action: "COMMENT_DELETE" }) }));
   });
+  it("deletes join and leave service messages when deleteJoinMessages is enabled", async () => {
+    const group = { id: "-200", deleteJoinMessages: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    await handleUpdate({
+      update_id: 7,
+      message: {
+        message_id: 5,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "1", first_name: "عضو جدید" },
+        new_chat_members: [{ id: "1", first_name: "عضو جدید" }],
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 5 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ chatId: "-200", action: "SERVICE_MESSAGE_DELETE" }) })
+    );
+  });
+  it("deletes slash commands sent by regular members when lockCommands is enabled", async () => {
+    const group = { id: "-200", lockCommands: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 8,
+      message: {
+        message_id: 6,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "2", first_name: "عضو عادی" },
+        text: "/help",
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 6 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ chatId: "-200", action: "COMMAND_DELETE" }) })
+    );
+  });
+  it("allows slash commands sent by admins even when lockCommands is enabled", async () => {
+    const group = { id: "-200", lockCommands: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "administrator" });
+    await handleUpdate({
+      update_id: 9,
+      message: {
+        message_id: 7,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "3", first_name: "مدیر گروه" },
+        text: "/stats",
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "COMMAND_DELETE" }) })
+    );
+  });
+  it("deletes messages containing links or mentions sent by regular members when lockLinks is enabled", async () => {
+    const group = { id: "-200", lockLinks: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 10,
+      message: {
+        message_id: 8,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "2", first_name: "عضو عادی" },
+        text: "کانال ما: https://t.me/example_channel",
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 8 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ chatId: "-200", action: "LINK_DELETE" }) })
+    );
+  });
+  it("allows messages containing links or mentions sent by admins even when lockLinks is enabled", async () => {
+    const group = { id: "-200", lockLinks: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "administrator" });
+    await handleUpdate({
+      update_id: 11,
+      message: {
+        message_id: 9,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "3", first_name: "مدیر گروه" },
+        text: "لینک رسمی: https://t.me/example_channel",
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "LINK_DELETE" }) })
+    );
+  });
   it("does not verify /start commands in public groups", async () => {
     mocks.db.guardChat.findFirst.mockResolvedValue(null);
     await handleUpdate({ update_id: 1, message: { message_id: 1, chat: { id: "-100", type: "supergroup" }, from: { id: "1", first_name: "عضو" }, text: "/start" } });

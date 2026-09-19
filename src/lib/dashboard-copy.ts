@@ -67,6 +67,9 @@ const copy = {
   wait: ["زمان انتظار پس از عضویت", "Waiting period after joining"],
   hours: ["ساعت", "hours"],
   commentGate: ["زمان انتظار دیدگاه‌ها در گروه مرتبط", "Comment waiting period in linked group"],
+  deleteJoinMessages: ["حذف پیام‌های ورود و خروج", "Delete join/leave service messages"],
+  lockCommands: ["قفل دستورات اسلش", "Lock slash commands"],
+  lockLinks: ["قفل لینک و آیدی", "Lock links and mentions"],
   latestEvents: ["آخرین عملیات", "Recent activity"],
   allEvents: ["مشاهدهٔ گزارش عملیات", "View activity log"],
   noEvents: ["عملیاتی ثبت نشده", "No activity recorded"],
@@ -125,6 +128,9 @@ const copy = {
   waitRange: ["بین ۰ تا ۱۶۸ ساعت", "Between 0 and 168 hours"],
   verifyBeforeVote: ["تأیید حساب با ربات پیش از رأی دادن", "Require bot verification before voting"],
   gateComments: ["اعمال زمان انتظار پس از عضویت برای دیدگاه‌ها", "Apply the post-join waiting period to comments"],
+  deleteJoinMessagesLabel: ["حذف خودکار پیام‌های ورود و خروج در گروه", "Automatically delete join and leave messages in the group"],
+  lockCommandsLabel: ["حذف دستورات اسلش کاربران عادی در گروه", "Delete slash commands from non-admin members in the group"],
+  lockLinksLabel: ["حذف پیام‌های حاوی لینک یا آیدی در گروه", "Delete messages containing links or mentions in the group"],
   discussionId: ["شناسهٔ گروه گفتگوی مرتبط", "Linked discussion group ID"],
   discussionHelp: ["برای کنترل دیدگاه‌ها، گروه مرتبط باید جداگانه ثبت شده باشد و ربات در آن دسترسی مدیریتی داشته باشد. خالی گذاشتن یعنی بدون گروه مرتبط.", "To control comments, register the linked group separately and give the bot admin access there. Leave empty for no linked group."],
   sending: ["در حال ارسال…", "Sending…"],
@@ -150,6 +156,10 @@ const copy = {
   publishAction: ["انتشار پست", "Publish post"],
   settingsAction: ["تغییر تنظیمات کانال", "Change chat settings"],
   reviewAction: ["بررسی هشدار", "Review alert"],
+  serviceMessageDeleteAction: ["حذف پیام سرویسی", "Delete service message"],
+  commentDeleteAction: ["حذف دیدگاه در دوره انتظار", "Delete comment in waiting period"],
+  commandDeleteAction: ["حذف دستور اسلش", "Delete slash command"],
+  linkDeleteAction: ["حذف لینک یا آیدی", "Delete link or mention"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type DashboardCopy = { [Key in keyof typeof copy]: string };
@@ -166,7 +176,20 @@ export function statusLabel(locale: Locale, status: string): string {
 
 export function actionLabel(locale: Locale, action: string): string {
   const c = dashboardCopy(locale);
-  const labels: Record<string, string> = { ban: c.ban, unban: c.unban, publish: c.publishAction, sync: c.sync, attach: c.attach, settings: c.settingsAction, connect: c.connect, review: c.reviewAction };
+  const labels: Record<string, string> = {
+    ban: c.ban,
+    unban: c.unban,
+    publish: c.publishAction,
+    sync: c.sync,
+    attach: c.attach,
+    settings: c.settingsAction,
+    connect: c.connect,
+    review: c.reviewAction,
+    service_message_delete: c.serviceMessageDeleteAction,
+    comment_delete: c.commentDeleteAction,
+    command_delete: c.commandDeleteAction,
+    link_delete: c.linkDeleteAction,
+  };
   return labels[action.toLowerCase()] ?? c.recordedAction;
 }
 

@@ -35,3 +35,39 @@ export function isPresent(status: string, isMember = false): boolean {
 export function observedJoin(oldStatus: string, newStatus: string, oldMember: boolean, newMember: boolean): boolean {
   return !isPresent(oldStatus, oldMember) && isPresent(newStatus, newMember);
 }
+
+export function isServiceJoinLeave(message: {
+  new_chat_members?: unknown[];
+  new_chat_member?: unknown;
+  left_chat_member?: unknown;
+}): boolean {
+  return (
+    (Array.isArray(message.new_chat_members) && message.new_chat_members.length > 0) ||
+    Boolean(message.new_chat_member) ||
+    Boolean(message.left_chat_member)
+  );
+}
+
+export function isSlashCommand(text?: string | null): boolean {
+  if (!text) return false;
+  return /^\/[a-zA-Z0-9_]+/i.test(text.trim());
+}
+
+export function hasLinkOrMention(message: {
+  text?: string | null;
+  caption?: string | null;
+  entities?: { type: string; url?: string }[];
+  caption_entities?: { type: string; url?: string }[];
+}): boolean {
+  const allEntities = [...(message.entities ?? []), ...(message.caption_entities ?? [])];
+  if (allEntities.some(e => ["url", "text_link", "mention"].includes(e.type))) {
+    return true;
+  }
+  const combined = `${message.text ?? ""} ${message.caption ?? ""}`;
+  if (!combined.trim()) return false;
+  const linkRegex = /(?:https?:\/\/|t\.me\/|telegram\.me\/|telegram\.dog\/|@[a-zA-Z0-9_]{3,})/i;
+  return linkRegex.test(combined);
+}
+
+
+

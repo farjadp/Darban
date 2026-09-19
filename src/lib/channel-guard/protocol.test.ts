@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -37,3 +37,56 @@ describe("observed membership transitions", () => {
   it("records rejoining after a ban", () => expect(observedJoin("kicked", "member", false, true)).toBe(true));
   it("recognizes restricted members still in the group", () => expect(observedJoin("restricted", "member", true, true)).toBe(false));
 });
+
+describe("service join/leave detection", () => {
+  it("recognizes new_chat_members array", () => expect(isServiceJoinLeave({ new_chat_members: [{ id: "1", first_name: "عضو" }] })).toBe(true));
+  it("recognizes new_chat_member object", () => expect(isServiceJoinLeave({ new_chat_member: { id: "1", first_name: "عضو" } })).toBe(true));
+  it("recognizes left_chat_member object", () => expect(isServiceJoinLeave({ left_chat_member: { id: "1", first_name: "عضو" } })).toBe(true));
+  it("ignores regular text messages", () => expect(isServiceJoinLeave({})).toBe(false));
+  it("ignores empty new_chat_members array", () => expect(isServiceJoinLeave({ new_chat_members: [] })).toBe(false));
+});
+
+describe("slash command detection", () => {
+  it("recognizes standard bot commands", () => expect(isSlashCommand("/help")).toBe(true));
+  it("recognizes commands with bot username", () => expect(isSlashCommand("/start@darban_bot")).toBe(true));
+  it("recognizes commands with arguments", () => expect(isSlashCommand("/ban 123 spam")).toBe(true));
+  it("handles leading and trailing whitespace", () => expect(isSlashCommand("  /stats  ")).toBe(true));
+  it("ignores regular text containing slashes", () => expect(isSlashCommand("check out this link/page")).toBe(false));
+  it("ignores double slashes or comments", () => expect(isSlashCommand("// comment")).toBe(false));
+  it("ignores bare slash or empty text", () => {
+    expect(isSlashCommand("/")).toBe(false);
+    expect(isSlashCommand("")).toBe(false);
+    expect(isSlashCommand(null)).toBe(false);
+  });
+});
+
+describe("link and mention detection", () => {
+  it("recognizes web links in text", () => {
+    expect(hasLinkOrMention({ text: "Visit https://example.com" })).toBe(true);
+    expect(hasLinkOrMention({ text: "http://my-site.ir/page" })).toBe(true);
+  });
+  it("recognizes Telegram links in text", () => {
+    expect(hasLinkOrMention({ text: "عضویت در کانال: t.me/darban_channel" })).toBe(true);
+    expect(hasLinkOrMention({ text: "telegram.me/joinchat/xyz" })).toBe(true);
+  });
+  it("recognizes @mentions in text", () => {
+    expect(hasLinkOrMention({ text: "آیدی من: @my_username" })).toBe(true);
+  });
+  it("recognizes links in photo/media captions", () => {
+    expect(hasLinkOrMention({ caption: "تخفیف ویژه در https://shop.com" })).toBe(true);
+    expect(hasLinkOrMention({ caption: "ارتباط با ما: @support" })).toBe(true);
+  });
+  it("recognizes Telegram entity links and text_links", () => {
+    expect(hasLinkOrMention({ text: "کلیک کنید", entities: [{ type: "text_link", url: "https://evil.com" }] })).toBe(true);
+    expect(hasLinkOrMention({ text: "سلام", entities: [{ type: "url" }] })).toBe(true);
+    expect(hasLinkOrMention({ text: "سلام", entities: [{ type: "mention" }] })).toBe(true);
+  });
+  it("ignores regular text without links or mentions", () => {
+    expect(hasLinkOrMention({ text: "سلام دوستان، روزتون بخیر" })).toBe(false);
+    expect(hasLinkOrMention({ text: "" })).toBe(false);
+    expect(hasLinkOrMention({})).toBe(false);
+  });
+});
+
+
+
