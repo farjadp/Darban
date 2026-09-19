@@ -11,8 +11,8 @@ import { handleUpdate } from "./guard";
 beforeEach(() => { vi.resetAllMocks(); mocks.db.guardUpdate.create.mockResolvedValue({}); mocks.db.guardUpdate.update.mockResolvedValue({}); mocks.db.guardChat.findMany.mockResolvedValue([]); mocks.telegram.mockResolvedValue(true); });
 describe("webhook behavior", () => {
   it("checks both group and linked-channel waiting rules before accepting a comment", async () => {
-    const group = { id: "-200", waitHours: 0, verification: false };
-    const channel = { id: "-100", waitHours: 24, verification: false };
+    const group = { id: "-200", waitHours: 0, verification: false, commentGate: true };
+    const channel = { id: "-100", waitHours: 24, verification: false, commentGate: true };
     mocks.db.guardChat.findFirst.mockResolvedValue(group);
     mocks.db.guardChat.findMany.mockResolvedValue([group, channel]);
     mocks.db.guardMember.findUnique.mockResolvedValue({ joinedAt: new Date() });
@@ -73,6 +73,24 @@ describe("webhook behavior", () => {
     expect(mocks.db.guardEvent.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "COMMAND_DELETE" }) })
     );
+  });
+  it("reads the chat rules once and asks Telegram about the sender once, whatever the message trips", async () => {
+    const group = { id: "-200", active: true, lockLinks: true, lockMedia: true, lockForwards: true, lockEmoji: true, commentGate: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "administrator" });
+    await handleUpdate({
+      update_id: 30,
+      message: {
+        message_id: 24,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "4", first_name: "مدیر گروه" },
+        caption: "کانال ما 😀 https://t.me/example_channel",
+        photo: [{ file_id: "p1" }],
+        forward_origin: { type: "channel" },
+      },
+    });
+    expect(mocks.db.guardChat.findMany).toHaveBeenCalledTimes(1);
+    expect(mocks.getMember).toHaveBeenCalledTimes(1);
   });
   it("deletes messages containing links or mentions sent by regular members when lockLinks is enabled", async () => {
     const group = { id: "-200", lockLinks: true, active: true };
