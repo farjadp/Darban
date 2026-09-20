@@ -128,6 +128,39 @@ describe("webhook behavior", () => {
       expect.objectContaining({ data: expect.objectContaining({ action: "LINK_DELETE" }) })
     );
   });
+  it("deletes messages containing hashtags sent by regular members when lockHashtags is enabled", async () => {
+    const group = { id: "-200", lockHashtags: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 31,
+      message: {
+        message_id: 25,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "5", first_name: "عضو عادی" },
+        text: "فروش ویژه #تخفیف_امروز",
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 25 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ chatId: "-200", action: "HASHTAG_DELETE" }) })
+    );
+  });
+  it("leaves hashtags alone when only lockLinks is enabled", async () => {
+    const group = { id: "-200", lockLinks: true, active: true };
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 32,
+      message: {
+        message_id: 26,
+        chat: { id: "-200", type: "supergroup" },
+        from: { id: "5", first_name: "عضو عادی" },
+        text: "فروش ویژه #تخفیف_امروز",
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+  });
   it("deletes media messages sent by regular members when lockMedia is enabled", async () => {
     const group = { id: "-200", lockMedia: true, active: true };
     mocks.db.guardChat.findMany.mockResolvedValue([group]);

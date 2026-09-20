@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { GuardError, hasAdminRights } from "./access";
 import { handlePrivateMessage } from "./commands";
 import type { Update } from "./input";
-import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly } from "./protocol";
 import { withChatLock } from "./store";
 import { getMember, telegram, TelegramError } from "./telegram";
 import { handleVote } from "./votes";
@@ -136,6 +136,20 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
         actor: "system:link-lock",
         action: "LINK_DELETE",
         reason: "حذف پیام حاوی لینک یا آیدی تلگرام طبق تنظیم قفل لینک",
+        targetId: user.id,
+      });
+      return;
+    }
+  }
+
+  if (hasHashtag(message)) {
+    const chat = chats.find(rule => rule.lockHashtags);
+    if (chat && !(await isAdmin())) {
+      await recordAndDelete(message, chat, {
+        key: "hashtag-lock",
+        actor: "system:hashtag-lock",
+        action: "HASHTAG_DELETE",
+        reason: "حذف پیام حاوی هشتگ کاربر عادی طبق تنظیم قفل هشتگ",
         targetId: user.id,
       });
       return;

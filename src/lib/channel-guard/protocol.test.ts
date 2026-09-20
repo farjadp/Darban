@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -85,6 +85,30 @@ describe("link and mention detection", () => {
     expect(hasLinkOrMention({ text: "سلام دوستان، روزتون بخیر" })).toBe(false);
     expect(hasLinkOrMention({ text: "" })).toBe(false);
     expect(hasLinkOrMention({})).toBe(false);
+  });
+  it("does not treat a hashtag as a link, which is why the hashtag lock exists", () => {
+    expect(hasLinkOrMention({ text: "#تخفیف_ویژه" })).toBe(false);
+  });
+});
+
+describe("hashtag detection", () => {
+  it("recognizes Persian and English hashtags in text", () => {
+    expect(hasHashtag({ text: "#تخفیف_ویژه امروز" })).toBe(true);
+    expect(hasHashtag({ text: "check this #sale" })).toBe(true);
+    expect(hasHashtag({ text: "#۱۴۰۳" })).toBe(true);
+  });
+  it("recognizes hashtags in captions", () => {
+    expect(hasHashtag({ caption: "عکس امروز #طبیعت" })).toBe(true);
+  });
+  it("recognizes Telegram hashtag and cashtag entities", () => {
+    expect(hasHashtag({ text: "سلام", entities: [{ type: "hashtag" }] })).toBe(true);
+    expect(hasHashtag({ text: "سلام", caption_entities: [{ type: "cashtag" }] })).toBe(true);
+  });
+  it("ignores a bare hash and text without hashtags", () => {
+    expect(hasHashtag({ text: "شماره # را بزنید" })).toBe(false);
+    expect(hasHashtag({ text: "سلام دوستان" })).toBe(false);
+    expect(hasHashtag({ text: "" })).toBe(false);
+    expect(hasHashtag({})).toBe(false);
   });
 });
 

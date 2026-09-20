@@ -69,6 +69,21 @@ export function hasLinkOrMention(message: {
   return linkRegex.test(combined);
 }
 
+// هشتگ لینک نیست، پس قفل لینک نمی‌گیردش. تلگرام خودش hashtag و cashtag را علامت می‌زند،
+// ولی روی متن ویرایش‌شده یا کلاینت غیررسمی ممکن است نزند، پس متن هم خوانده می‌شود.
+export function hasHashtag(message: {
+  text?: string | null;
+  caption?: string | null;
+  entities?: { type: string }[];
+  caption_entities?: { type: string }[];
+}): boolean {
+  const allEntities = [...(message.entities ?? []), ...(message.caption_entities ?? [])];
+  if (allEntities.some(e => e.type === "hashtag" || e.type === "cashtag")) return true;
+  const combined = `${message.text ?? ""} ${message.caption ?? ""}`;
+  if (!combined.trim()) return false;
+  return /#[\p{L}\p{N}_]+/u.test(combined);
+}
+
 export type MediaType = "photo" | "video" | "animation" | "sticker" | "audio" | "voice" | "document" | "video_note";
 
 export function detectMediaType(message: {
