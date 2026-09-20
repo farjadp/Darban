@@ -57,6 +57,7 @@ model GuardChatRule {
   penalty     String    @default("DELETE")
   limitCount  Int       @default(0)
   limitWindowMinutes Int @default(0)
+  wordList    String?
   muteMinutes Int       @default(60)
   updatedAt   DateTime  @updatedAt
   chat        GuardChat @relation(fields: [chatId], references: [id])

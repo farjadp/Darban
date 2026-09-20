@@ -289,8 +289,8 @@ describe("defensive admin operations", () => {
     });
     expect(mocks.db.guardChatRule.upsert).toHaveBeenCalledWith({
       where: { chatId_rule: { chatId, rule: "links" } },
-      create: { chatId, rule: "links", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0 },
-      update: { enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0 },
+      create: { chatId, rule: "links", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0, wordList: null },
+      update: { enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0, wordList: null },
     });
     // خاموش‌کردن یک قاعده هم باید نوشته شود، وگرنه خاموشی ذخیره نمی‌شد
     expect(mocks.db.guardChatRule.upsert).toHaveBeenCalledTimes(2);

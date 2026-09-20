@@ -15,7 +15,7 @@ export type PostPhoto = { blob: Blob; filename: string };
 const TEXT_LIMIT = 4096;
 const CAPTION_LIMIT = 1024;
 type ModerationInput = { chatId: string; targetId: string; action: "ban" | "unban"; reason: string; requestId: string };
-type RuleInput = { rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null; penalty: string; muteMinutes: number; limitCount?: number; limitWindowMinutes?: number };
+type RuleInput = { rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null; penalty: string; muteMinutes: number; limitCount?: number; limitWindowMinutes?: number; wordList?: string | null };
 type TextInput = { key: string; body: string };
 type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; adminsExempt?: boolean; minWords?: number; maxWords?: number; timezone?: string; rules?: RuleInput[]; silentBotMessages?: boolean; texts?: TextInput[]; discussionChatId: string | null };
 type AttachInput = { chatId: string; postId: string; messageId: number };
@@ -234,7 +234,7 @@ export async function saveSettings(input: SettingsInput, actorId: string) {
       const updated = await tx.guardChat.update({ where: { id: chatId }, data: settings });
       // هر قاعده upsert می‌شود تا خاموش‌کردن یکی، پنجره و مجازاتش را پاک نکند.
       for (const rule of input.rules ?? []) {
-        const row = { enabled: rule.enabled, startMinute: rule.startMinute, endMinute: rule.endMinute, penalty: rule.penalty, muteMinutes: rule.muteMinutes, limitCount: rule.limitCount ?? 0, limitWindowMinutes: rule.limitWindowMinutes ?? 0 };
+        const row = { enabled: rule.enabled, startMinute: rule.startMinute, endMinute: rule.endMinute, penalty: rule.penalty, muteMinutes: rule.muteMinutes, limitCount: rule.limitCount ?? 0, limitWindowMinutes: rule.limitWindowMinutes ?? 0, wordList: rule.wordList ?? null };
         await tx.guardChatRule.upsert({
           where: { chatId_rule: { chatId, rule: rule.rule } },
           create: { chatId, rule: rule.rule, ...row },

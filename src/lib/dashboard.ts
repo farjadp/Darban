@@ -9,7 +9,7 @@ export type Chat = {
 };
 export type RuleSetting = {
   rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null;
-  penalty: string; muteMinutes: number; limitCount: number; limitWindowMinutes: number;
+  penalty: string; muteMinutes: number; limitCount: number; limitWindowMinutes: number; wordList: string | null;
 };
 export type DashboardData = {
   chats: Chat[];
@@ -85,9 +85,9 @@ export async function loadDashboard(adminId: string, requestedChat?: string): Pr
 }
 export function sampleDashboard(): DashboardData {
   const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, adminsExempt: true, minWords: 0, maxWords: 0, timezone: "Asia/Tehran", silentBotMessages: true, texts: [{ key: "welcome", body: "*{user}* عزیز، به {group} خوش آمدی." }], discussionChatId: "-100000000002", rules: [
-    { rule: "links", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 0, limitWindowMinutes: 0 },
-    { rule: "media", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0 },
-    { rule: "message_rate", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 10, limitWindowMinutes: 5 },
+    { rule: "links", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 0, limitWindowMinutes: 0, wordList: null },
+    { rule: "media", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0, wordList: null },
+    { rule: "message_rate", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 10, limitWindowMinutes: 5, wordList: null },
   ] };
   const members: DashboardData["members"] = [
     { userId: "900000001", name: "کاربر نمونهٔ اول", joinedAt: "2026-09-17T08:00:00Z", verifiedAt: "2026-09-17T08:10:00Z", firstVotedAt: "2026-09-18T09:00:00Z", banned: false, present: true },

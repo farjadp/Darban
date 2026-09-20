@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, fingerprint, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, fingerprint, hasNoText, hasLatinLetters, hasArabicLetters, matchesBlockedWord, isViaBot, hasLocation, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -152,6 +152,66 @@ describe("word count limits", () => {
   });
   it("does not miscount on repeated whitespace", () => {
     expect(wordCountViolation({ text: "  یک    دو  " }, 3, 0)).toBe("short");
+  });
+});
+
+describe("single-field rules", () => {
+  it("sees a location or a venue", () => {
+    expect(hasLocation({ location: {} })).toBe(true);
+    expect(hasLocation({ venue: {} })).toBe(true);
+    expect(hasLocation({})).toBe(false);
+  });
+  it("sees a message sent through another bot", () => {
+    expect(isViaBot({ via_bot: { id: "1" } })).toBe(true);
+    expect(isViaBot({})).toBe(false);
+  });
+  it("treats a caption as text, so a captioned photo is not textless", () => {
+    expect(hasNoText({ caption: "توضیح" })).toBe(false);
+    expect(hasNoText({ text: "سلام" })).toBe(false);
+    expect(hasNoText({})).toBe(true);
+    expect(hasNoText({ text: "   " })).toBe(true);
+  });
+});
+
+describe("language locks", () => {
+  it("finds Latin letters anywhere in the message", () => {
+    expect(hasLatinLetters({ text: "سلام hello" })).toBe(true);
+    expect(hasLatinLetters({ caption: "Sale" })).toBe(true);
+    expect(hasLatinLetters({ text: "سلام دوستان" })).toBe(false);
+  });
+  it("does not call digits or punctuation Latin letters", () => {
+    expect(hasLatinLetters({ text: "۱۲۳ 456 !?" })).toBe(false);
+  });
+  it("finds Persian and Arabic letters", () => {
+    expect(hasArabicLetters({ text: "سلام" })).toBe(true);
+    expect(hasArabicLetters({ text: "مرحبا" })).toBe(true);
+    expect(hasArabicLetters({ text: "hello 123" })).toBe(false);
+  });
+  it("recognizes the Persian letters that sit outside the base Arabic block", () => {
+    expect(hasArabicLetters({ text: "گچپژ" })).toBe(true);
+  });
+});
+
+describe("blocked words", () => {
+  const list = "تبلیغ\nfree money\n";
+  it("finds a listed word and reports which one matched", () => {
+    expect(matchesBlockedWord({ text: "این یک تبلیغ است" }, list)).toBe("تبلیغ");
+  });
+  it("ignores case", () => {
+    expect(matchesBlockedWord({ text: "FREE MONEY now" }, list)).toBe("free money");
+  });
+  it("matches inside a word, which is deliberate for Persian", () => {
+    expect(matchesBlockedWord({ text: "تبلیغات" }, list)).toBe("تبلیغ");
+  });
+  it("passes a clean message", () => {
+    expect(matchesBlockedWord({ text: "سلام دوستان" }, list)).toBe(null);
+  });
+  it("is off without a list, and ignores blank lines in one", () => {
+    expect(matchesBlockedWord({ text: "هرچیزی" }, null)).toBe(null);
+    expect(matchesBlockedWord({ text: "هرچیزی" }, "\n\n  \n")).toBe(null);
+  });
+  it("has nothing to match in a message with no text", () => {
+    expect(matchesBlockedWord({}, list)).toBe(null);
   });
 });
 

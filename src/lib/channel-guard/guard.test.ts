@@ -244,6 +244,64 @@ describe("webhook behavior", () => {
     });
     expect(mocks.telegram).not.toHaveBeenCalledWith("restrictChatMember", expect.anything());
   });
+  it("deletes everything from a member during a silence window", async () => {
+    vi.setSystemTime(new Date("2026-09-20T23:00:00Z"));
+    const group = chatRow({ id: "-200", rules: [{ rule: "silence", startMinute: 1380, endMinute: 360 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 70,
+      message: { message_id: 70, chat: { id: "-200", type: "supergroup" }, from: { id: "20", first_name: "عضو" }, text: "سلام" },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 70 });
+    vi.useRealTimers();
+  });
+  it("lets the same message through outside the silence window", async () => {
+    vi.setSystemTime(new Date("2026-09-20T12:00:00Z"));
+    const group = chatRow({ id: "-200", rules: [{ rule: "silence", startMinute: 1380, endMinute: 360 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 71,
+      message: { message_id: 71, chat: { id: "-200", type: "supergroup" }, from: { id: "20", first_name: "عضو" }, text: "سلام" },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+    vi.useRealTimers();
+  });
+  it("deletes a blocked word and keeps the word itself out of the record", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "blocked_words", wordList: "تبلیغ" }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 72,
+      message: { message_id: 72, chat: { id: "-200", type: "supergroup" }, from: { id: "20", first_name: "عضو" }, text: "یک تبلیغ" },
+    });
+    const call = mocks.db.guardEvent.create.mock.calls.at(-1)?.[0] as { data: { action: string; reason: string } };
+    expect(call.data.action).toBe("BLOCKED_WORD_DELETE");
+    expect(call.data.reason).not.toContain("تبلیغ");
+  });
+  it("deletes a shared location when that rule is on", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "location" }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 73,
+      message: { message_id: 73, chat: { id: "-200", type: "supergroup" }, from: { id: "20", first_name: "عضو" }, location: { latitude: 1, longitude: 2 } },
+    });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "LOCATION_DELETE" }) })
+    );
+  });
+  it("does not treat a captioned photo as a textless post", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "no_text" }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 74,
+      message: { message_id: 74, chat: { id: "-200", type: "supergroup" }, from: { id: "20", first_name: "عضو" }, photo: [{ file_id: "p" }], caption: "توضیح" },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+  });
   it("answers /rules before the command lock could delete it", async () => {
     const group = chatRow({ id: "-200", rules: [{ rule: "commands" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);

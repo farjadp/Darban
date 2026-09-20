@@ -2,7 +2,8 @@ import { db } from "@/lib/db";
 import { GuardError, hasAdminRights } from "./access";
 import { handlePrivateMessage } from "./commands";
 import type { Update } from "./input";
-import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation, minutesInZone, withinWindow, fingerprint } from "./protocol";
+import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation, minutesInZone, withinWindow, fingerprint,
+  hasLocation, hasContact, hasPoll, hasGame, isViaBot, hasNoText, hasLatinLetters, hasArabicLetters, matchesBlockedWord } from "./protocol";
 import type { RuleKey } from "./protocol";
 import { fillTemplate } from "./markup";
 import { withChatLock } from "./store";
@@ -231,6 +232,60 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
         actor: "system:hashtag-lock",
         action: "HASHTAG_DELETE",
         reason: "حذف پیام حاوی هشتگ کاربر عادی طبق تنظیم قفل هشتگ",
+        targetId: user.id,
+      });
+      return;
+    }
+  }
+
+  // سکوت: قاعده‌ای بدون شرط محتوا. با پنجره یعنی خاموشی زمان‌بندی‌شده،
+  // بدون پنجره یعنی قفل دستی تا وقتی مدیر خاموشش کند.
+  const silenceMatch = matchRule("silence");
+  if (silenceMatch && !(silenceMatch.chat.adminsExempt && await isAdmin())) {
+    await enforce(message, silenceMatch, {
+      key: "silence",
+      actor: "system:silence",
+      action: "SILENCE_DELETE",
+      reason: "حذف پیام در بازه‌ی سکوت گروه",
+      targetId: user.id,
+    });
+    return;
+  }
+
+  const singles = [
+    { key: "location" as const, when: hasLocation, act: "LOCATION_DELETE", why: "حذف موقعیت مکانی طبق تنظیم قفل لوکیشن" },
+    { key: "contact" as const, when: hasContact, act: "CONTACT_DELETE", why: "حذف شماره تلفن طبق تنظیم قفل شماره" },
+    { key: "poll" as const, when: hasPoll, act: "POLL_DELETE", why: "حذف نظرسنجی طبق تنظیم قفل نظرسنجی" },
+    { key: "via_bot" as const, when: isViaBot, act: "VIA_BOT_DELETE", why: "حذف پیام ارسال‌شده از طریق بات دیگر طبق تنظیم قفل کلید شیشه‌ای" },
+    { key: "game" as const, when: hasGame, act: "GAME_DELETE", why: "حذف بازی یا اپلیکیشن طبق تنظیم قفل اپلیکیشن" },
+    { key: "no_text" as const, when: hasNoText, act: "NO_TEXT_DELETE", why: "حذف پیام بدون متن طبق تنظیم قفل پست بدون متن" },
+    { key: "latin" as const, when: hasLatinLetters, act: "LATIN_DELETE", why: "حذف پیام حاوی حروف انگلیسی طبق تنظیم قفل زبان" },
+    { key: "arabic" as const, when: hasArabicLetters, act: "ARABIC_DELETE", why: "حذف پیام حاوی حروف عربی یا فارسی طبق تنظیم قفل زبان" },
+  ];
+  for (const single of singles) {
+    if (!single.when(message)) continue;
+    const match = matchRule(single.key);
+    if (!match || (match.chat.adminsExempt && await isAdmin())) continue;
+    await enforce(message, match, {
+      key: `${single.key}-lock`,
+      actor: `system:${single.key}`,
+      action: single.act,
+      reason: single.why,
+      targetId: user.id,
+    });
+    return;
+  }
+
+  const wordsMatch = matchRule("blocked_words");
+  if (wordsMatch) {
+    const hit = matchesBlockedWord(message, wordsMatch.rule.wordList);
+    if (hit && !(wordsMatch.chat.adminsExempt && await isAdmin())) {
+      await enforce(message, wordsMatch, {
+        key: "words-block",
+        actor: "system:blocked-words",
+        action: "BLOCKED_WORD_DELETE",
+        // خود کلمه در سوابق نوشته نمی‌شود؛ مدیر خودش فهرست را دارد.
+        reason: `حذف پیام حاوی کلمه‌ی ممنوع (${hit.length} نویسه)`,
         targetId: user.id,
       });
       return;

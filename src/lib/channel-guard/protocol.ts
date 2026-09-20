@@ -84,7 +84,7 @@ export function hasHashtag(message: {
   return /#[\p{L}\p{N}_]+/u.test(combined);
 }
 
-export const RULE_KEYS = ["join_messages", "commands", "links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "word_limit", "message_rate", "duplicate_messages"] as const;
+export const RULE_KEYS = ["join_messages", "commands", "links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "word_limit", "message_rate", "duplicate_messages", "location", "contact", "poll", "via_bot", "game", "no_text", "latin", "arabic", "blocked_words", "silence"] as const;
 export type RuleKey = (typeof RULE_KEYS)[number];
 
 // ساعت محلیِ خودِ گروه، نه ساعت سرور. منطقه‌ی زمانی نامعتبر به UTC برمی‌گردد
@@ -133,6 +133,41 @@ export function fingerprint(message: { text?: string | null; caption?: string | 
   let hash = 5381;
   for (let i = 0; i < body.length; i++) hash = ((hash * 33) ^ body.charCodeAt(i)) >>> 0;
   return `${hash.toString(36)}:${body.length}`;
+}
+
+// قاعده‌های تک‌فیلدی: تلگرام خودش نوع را علامت زده، فقط باید پرسید.
+export const hasLocation = (m: { location?: unknown; venue?: unknown }) => Boolean(m.location || m.venue);
+export const hasContact = (m: { contact?: unknown }) => Boolean(m.contact);
+export const hasPoll = (m: { poll?: unknown }) => Boolean(m.poll);
+export const hasGame = (m: { game?: unknown }) => Boolean(m.game);
+// «کلید شیشه‌ای»: پیامی که از طریق یک بات دیگر و کیبورد inline آن آمده.
+export const isViaBot = (m: { via_bot?: unknown }) => Boolean(m.via_bot);
+
+// پیامی که هیچ متنی ندارد. با قفل رسانه یکی نیست: گروهی ممکن است عکس بخواهد
+// ولی عکس بی‌توضیح نه.
+export const hasNoText = (m: { text?: string | null; caption?: string | null }) =>
+  !(m.text ?? m.caption ?? "").trim();
+
+export const hasLatinLetters = (m: { text?: string | null; caption?: string | null }) =>
+  /[A-Za-z]/.test(`${m.text ?? ""} ${m.caption ?? ""}`);
+
+// بلوک عربی یونیکد، که فارسی هم داخلش است.
+export const hasArabicLetters = (m: { text?: string | null; caption?: string | null }) =>
+  /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(`${m.text ?? ""} ${m.caption ?? ""}`);
+
+// فهرست کلمات ممنوع، یکی در هر خط. تطبیق روی مرز کلمه نیست چون فارسی
+// نیم‌فاصله و چسبندگی دارد؛ زیررشته‌ی ساده با حروف کوچک‌شده کافی و قابل پیش‌بینی است.
+export function matchesBlockedWord(
+  m: { text?: string | null; caption?: string | null },
+  list: string | null,
+): string | null {
+  const body = `${m.text ?? ""} ${m.caption ?? ""}`.toLowerCase();
+  if (!body.trim() || !list) return null;
+  for (const raw of list.split(/\r?\n/)) {
+    const word = raw.trim().toLowerCase();
+    if (word && body.includes(word)) return raw.trim();
+  }
+  return null;
 }
 
 export type MediaType = "photo" | "video" | "animation" | "sticker" | "audio" | "voice" | "document" | "video_note";

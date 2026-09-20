@@ -77,6 +77,7 @@ export function AdminForm(props: Props) {
         muteMinutes: Number(fields.get(`mute_${key}`)) || 60,
         limitCount: Number(fields.get(`count_${key}`)) || 0,
         limitWindowMinutes: Number(fields.get(`per_${key}`)) || 0,
+        wordList: String(fields.get(`words_${key}`) ?? "").trim() || null,
       })),
       silentBotMessages: fields.get("silentBotMessages") === "on",
       texts: [
@@ -177,6 +178,8 @@ export function AdminForm(props: Props) {
                 <div className="space-y-1"><label htmlFor={`${id}-${key}-end`} className="block text-xs text-muted">{c.windowTo}</label><input id={`${id}-${key}-end`} name={`end_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.endMinute ?? null)} className={inputClass} /></div>
                 <div className="space-y-1"><label htmlFor={`${id}-${key}-penalty`} className="block text-xs text-muted">{c.penalty}</label><select id={`${id}-${key}-penalty`} name={`penalty_${key}`} defaultValue={saved?.penalty ?? "DELETE"} className={inputClass}><option value="DELETE">{c.penaltyDelete}</option><option value="SILENCE">{c.penaltySilence}</option></select></div>
                 <div className="space-y-1"><label htmlFor={`${id}-${key}-mute`} className="block text-xs text-muted">{c.muteMinutes}</label><input id={`${id}-${key}-mute`} name={`mute_${key}`} type="number" min={1} max={10080} step={1} dir="ltr" defaultValue={saved?.muteMinutes ?? 60} className={inputClass} /></div>
+                {key === "blocked_words" && <div className="w-full space-y-1"><label htmlFor={`${id}-${key}-words`} className="block text-xs text-muted">{c.wordListLabel}</label><textarea id={`${id}-${key}-words`} name={`words_${key}`} rows={3} maxLength={4096} defaultValue={saved?.wordList ?? ""} className={inputClass} aria-describedby={`${id}-${key}-words-help`} /><p id={`${id}-${key}-words-help`} className="text-xs text-muted">{c.wordListHelp}</p></div>}
+                {key === "silence" && <p className="w-full text-xs text-muted">{c.silenceHelp}</p>}
                 {(key === "message_rate" || key === "duplicate_messages") && <>
                   <div className="space-y-1"><label htmlFor={`${id}-${key}-count`} className="block text-xs text-muted">{c.limitCount}</label><input id={`${id}-${key}-count`} name={`count_${key}`} type="number" min={0} max={10000} step={1} dir="ltr" defaultValue={saved?.limitCount ?? 0} className={inputClass} /></div>
                   <div className="space-y-1"><label htmlFor={`${id}-${key}-per`} className="block text-xs text-muted">{c.limitWindow}</label><input id={`${id}-${key}-per`} name={`per_${key}`} type="number" min={0} max={10080} step={1} dir="ltr" defaultValue={saved?.limitWindowMinutes ?? 0} className={inputClass} /></div>
