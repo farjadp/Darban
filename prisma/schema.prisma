@@ -24,6 +24,9 @@ model GuardChat {
   lockEmoji        Boolean       @default(false)
   lockEmptyEmoji   Boolean       @default(false)
   lockHashtags     Boolean       @default(false)
+  adminsExempt     Boolean       @default(true)
+  minWords         Int           @default(0)
+  maxWords         Int           @default(0)
   discussionChatId String?       @unique
   createdAt        DateTime      @default(now())
   admins           ChatAdmin[]

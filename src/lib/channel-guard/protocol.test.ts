@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -88,6 +88,30 @@ describe("link and mention detection", () => {
   });
   it("does not treat a hashtag as a link, which is why the hashtag lock exists", () => {
     expect(hasLinkOrMention({ text: "#تخفیف_ویژه" })).toBe(false);
+  });
+});
+
+describe("word count limits", () => {
+  it("is off when both limits are zero", () => {
+    expect(wordCountViolation({ text: "سلام" }, 0, 0)).toBe(null);
+  });
+  it("catches a message under the minimum", () => {
+    expect(wordCountViolation({ text: "سلام" }, 3, 0)).toBe("short");
+    expect(wordCountViolation({ text: "سلام به همه" }, 3, 0)).toBe(null);
+  });
+  it("catches a message over the maximum", () => {
+    expect(wordCountViolation({ text: "یک دو سه چهار" }, 0, 3)).toBe("long");
+    expect(wordCountViolation({ text: "یک دو سه" }, 0, 3)).toBe(null);
+  });
+  it("counts a caption when there is no text", () => {
+    expect(wordCountViolation({ caption: "خوب" }, 2, 0)).toBe("short");
+  });
+  it("ignores a message with no text at all, which is the media lock's job", () => {
+    expect(wordCountViolation({}, 5, 0)).toBe(null);
+    expect(wordCountViolation({ text: "   " }, 5, 0)).toBe(null);
+  });
+  it("does not miscount on repeated whitespace", () => {
+    expect(wordCountViolation({ text: "  یک    دو  " }, 3, 0)).toBe("short");
   });
 });
 

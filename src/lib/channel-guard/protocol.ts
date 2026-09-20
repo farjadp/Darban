@@ -84,6 +84,21 @@ export function hasHashtag(message: {
   return /#[\p{L}\p{N}_]+/u.test(combined);
 }
 
+// صفر یعنی محدودیت خاموش است. پیامی که اصلاً متن ندارد (استیکر، عکس بی‌کپشن) شمرده نمی‌شود،
+// وگرنه حداقلِ کلمات هر استیکری را حذف می‌کرد؛ آن کار قفل رسانه است، نه این.
+export function wordCountViolation(
+  message: { text?: string | null; caption?: string | null },
+  min: number,
+  max: number,
+): "short" | "long" | null {
+  const body = (message.text ?? message.caption ?? "").trim();
+  if (!body) return null;
+  const words = body.split(/\s+/).length;
+  if (min > 0 && words < min) return "short";
+  if (max > 0 && words > max) return "long";
+  return null;
+}
+
 export type MediaType = "photo" | "video" | "animation" | "sticker" | "audio" | "voice" | "document" | "video_note";
 
 export function detectMediaType(message: {
