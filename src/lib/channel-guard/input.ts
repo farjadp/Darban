@@ -69,6 +69,8 @@ export const adminInput = z.discriminatedUnion("operation", [
       endMinute: z.number().int().min(0).max(1439).nullable().default(null),
       penalty: z.enum(["DELETE", "SILENCE"]).default("DELETE"),
       muteMinutes: z.number().int().min(1).max(10080).default(60),
+      limitCount: z.number().int().min(0).max(10000).default(0),
+      limitWindowMinutes: z.number().int().min(0).max(10080).default(0),
     })).max(RULE_KEYS.length).default([]),
     discussionChatId: chatId.nullable(),
   }),

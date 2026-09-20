@@ -84,7 +84,7 @@ export function hasHashtag(message: {
   return /#[\p{L}\p{N}_]+/u.test(combined);
 }
 
-export const RULE_KEYS = ["join_messages", "commands", "links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "word_limit"] as const;
+export const RULE_KEYS = ["join_messages", "commands", "links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "word_limit", "message_rate", "duplicate_messages"] as const;
 export type RuleKey = (typeof RULE_KEYS)[number];
 
 // ساعت محلیِ خودِ گروه، نه ساعت سرور. منطقه‌ی زمانی نامعتبر به UTC برمی‌گردد
@@ -123,6 +123,16 @@ export function wordCountViolation(
   if (min > 0 && words < min) return "short";
   if (max > 0 && words > max) return "long";
   return null;
+}
+
+// اثرانگشت متن پیام برای تشخیص تکرار. متن نگه داشته نمی‌شود.
+// فاصله‌ها یکدست و حروف کوچک می‌شوند تا «سلام  ‌دوستان» و «سلام دوستان» یکی شمرده شوند.
+export function fingerprint(message: { text?: string | null; caption?: string | null }): string | null {
+  const body = (message.text ?? message.caption ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!body) return null;
+  let hash = 5381;
+  for (let i = 0; i < body.length; i++) hash = ((hash * 33) ^ body.charCodeAt(i)) >>> 0;
+  return `${hash.toString(36)}:${body.length}`;
 }
 
 export type MediaType = "photo" | "video" | "animation" | "sticker" | "audio" | "voice" | "document" | "video_note";

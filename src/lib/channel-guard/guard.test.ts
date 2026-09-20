@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-  db: { guardUpdate: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() }, guardChat: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() }, guardUser: { upsert: vi.fn() }, guardPost: { findUnique: vi.fn() }, guardMember: { findUnique: vi.fn() }, guardEvent: { create: vi.fn(), update: vi.fn() } },
+  db: { guardUpdate: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() }, guardChat: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() }, guardUser: { upsert: vi.fn() }, guardPost: { findUnique: vi.fn() }, guardMember: { findUnique: vi.fn() }, guardEvent: { create: vi.fn(), update: vi.fn() }, guardMessageLog: { create: vi.fn(), count: vi.fn(), deleteMany: vi.fn() } },
   telegram: vi.fn(), getMember: vi.fn(), moderateMember: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
@@ -8,7 +8,7 @@ vi.mock("./telegram", () => ({ telegram: mocks.telegram, getMember: mocks.getMem
 vi.mock("./actions", () => ({ moderateMember: mocks.moderateMember }));
 import { handleUpdate } from "./guard";
 
-beforeEach(() => { vi.resetAllMocks(); mocks.db.guardUpdate.create.mockResolvedValue({}); mocks.db.guardUpdate.update.mockResolvedValue({}); mocks.db.guardChat.findMany.mockResolvedValue([]); mocks.telegram.mockResolvedValue(true); });
+beforeEach(() => { vi.resetAllMocks(); mocks.db.guardUpdate.create.mockResolvedValue({}); mocks.db.guardUpdate.update.mockResolvedValue({}); mocks.db.guardChat.findMany.mockResolvedValue([]); mocks.telegram.mockResolvedValue(true); mocks.db.guardMessageLog.count.mockResolvedValue(0); });
 // ردیف GuardChat در دیتابیس هیچ‌وقت ستون کم ندارد، پس fixture هم نباید داشته باشد.
 // هر بار که این‌ها دستی نوشته شدند، افزودن یک ستون جدید تست‌ها را به‌دلیل اشتباه شکست.
 const chatRow = ({ rules = [], ...overrides }: Record<string, unknown> & { rules?: Record<string, unknown>[] }) => ({
@@ -20,7 +20,7 @@ const chatRow = ({ rules = [], ...overrides }: Record<string, unknown> & { rules
   maxWords: 0,
   timezone: "UTC",
   ...overrides,
-  rules: rules.map(rule => ({ enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, ...rule })),
+  rules: rules.map(rule => ({ enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 0, limitWindowMinutes: 0, ...rule })),
 });
 
 describe("webhook behavior", () => {
@@ -235,6 +235,79 @@ describe("webhook behavior", () => {
       message: { message_id: 43, chat: { id: "-200", type: "supergroup" }, from: { id: "9", first_name: "عضو عادی" }, text: "https://t.me/x" },
     });
     expect(mocks.telegram).not.toHaveBeenCalledWith("restrictChatMember", expect.anything());
+  });
+  it("writes nothing to the counter table when no counting rule is on", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "links" }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 50,
+      message: { message_id: 50, chat: { id: "-200", type: "supergroup" }, from: { id: "10", first_name: "عضو" }, text: "سلام" },
+    });
+    expect(mocks.db.guardMessageLog.create).not.toHaveBeenCalled();
+    expect(mocks.db.guardMessageLog.count).not.toHaveBeenCalled();
+  });
+  it("deletes a message once the sender is over the rate limit", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "message_rate", limitCount: 3, limitWindowMinutes: 5 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    mocks.db.guardMessageLog.count.mockResolvedValue(4);
+    await handleUpdate({
+      update_id: 51,
+      message: { message_id: 51, chat: { id: "-200", type: "supergroup" }, from: { id: "10", first_name: "عضو" }, text: "باز هم" },
+    });
+    expect(mocks.db.guardMessageLog.create).toHaveBeenCalled();
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 51 });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "MESSAGE_RATE_DELETE" }) })
+    );
+  });
+  it("leaves the message alone at exactly the limit, since the row for it is already counted", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "message_rate", limitCount: 3, limitWindowMinutes: 5 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    mocks.db.guardMessageLog.count.mockResolvedValue(3);
+    await handleUpdate({
+      update_id: 52,
+      message: { message_id: 52, chat: { id: "-200", type: "supergroup" }, from: { id: "10", first_name: "عضو" }, text: "سومی" },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+  });
+  it("prunes counter rows by age on every write", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "message_rate", limitCount: 3, limitWindowMinutes: 5 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 53,
+      message: { message_id: 53, chat: { id: "-200", type: "supergroup" }, from: { id: "10", first_name: "عضو" }, text: "سلام" },
+    });
+    expect(mocks.db.guardMessageLog.deleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ chatId: "-200", userId: "10" }) })
+    );
+  });
+  it("deletes a repeat once the same text passes its limit", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "duplicate_messages", limitCount: 2, limitWindowMinutes: 1440 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    mocks.db.guardMessageLog.count.mockResolvedValue(3);
+    await handleUpdate({
+      update_id: 54,
+      message: { message_id: 54, chat: { id: "-200", type: "supergroup" }, from: { id: "10", first_name: "عضو" }, text: "تبلیغ" },
+    });
+    expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: "DUPLICATE_DELETE" }) })
+    );
+  });
+  it("does not count a message with no text against the duplicate rule", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "duplicate_messages", limitCount: 1, limitWindowMinutes: 60 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    mocks.db.guardMessageLog.count.mockResolvedValue(9);
+    await handleUpdate({
+      update_id: 55,
+      message: { message_id: 55, chat: { id: "-200", type: "supergroup" }, from: { id: "10", first_name: "عضو" }, sticker: { file_id: "s1" } },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
   });
   it("deletes messages containing hashtags sent by regular members when lockHashtags is enabled", async () => {
     const group = chatRow({ id: "-200", active: true, rules: [{ rule: "hashtags" }] });

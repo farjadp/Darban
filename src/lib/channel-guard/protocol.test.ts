@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, fingerprint, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -152,6 +152,30 @@ describe("word count limits", () => {
   });
   it("does not miscount on repeated whitespace", () => {
     expect(wordCountViolation({ text: "  یک    دو  " }, 3, 0)).toBe("short");
+  });
+});
+
+describe("message fingerprints", () => {
+  it("matches the same text sent twice", () => {
+    expect(fingerprint({ text: "تبلیغ ویژه" })).toBe(fingerprint({ text: "تبلیغ ویژه" }));
+  });
+  it("ignores case and repeated whitespace", () => {
+    expect(fingerprint({ text: "Buy  Now" })).toBe(fingerprint({ text: "buy now" }));
+    expect(fingerprint({ text: "  سلام دوستان  " })).toBe(fingerprint({ text: "سلام دوستان" }));
+  });
+  it("separates different text", () => {
+    expect(fingerprint({ text: "یک" })).not.toBe(fingerprint({ text: "دو" }));
+  });
+  it("keeps no trace of the words themselves", () => {
+    const mark = fingerprint({ text: "راز من" });
+    expect(mark).not.toContain("راز");
+  });
+  it("has nothing to fingerprint without text", () => {
+    expect(fingerprint({})).toBe(null);
+    expect(fingerprint({ text: "   " })).toBe(null);
+  });
+  it("falls back to the caption", () => {
+    expect(fingerprint({ caption: "متن عکس" })).toBe(fingerprint({ text: "متن عکس" }));
   });
 });
 

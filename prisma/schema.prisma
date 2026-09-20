@@ -41,11 +41,28 @@ model GuardChatRule {
   startMinute Int?
   endMinute   Int?
   penalty     String    @default("DELETE")
+  limitCount  Int       @default(0)
+  limitWindowMinutes Int @default(0)
   muteMinutes Int       @default(60)
   updatedAt   DateTime  @updatedAt
   chat        GuardChat @relation(fields: [chatId], references: [id])
 
   @@id([chatId, rule])
+}
+
+// شمارش پیام‌های اخیر، فقط برای چت‌هایی که قاعده‌ی شمارشی روشن دارند.
+// fingerprint هشِ متن است نه خود متن: سؤال فقط این است که دو پیام یکی بوده‌اند یا نه،
+// و نگه‌داشتن کلمات این جدول را به رونوشتی از گفتگوی گروه تبدیل می‌کرد.
+model GuardMessageLog {
+  id          String   @id @default(cuid())
+  chatId      String
+  userId      String
+  fingerprint String?
+  createdAt   DateTime @default(now())
+
+  @@index([chatId, userId, createdAt])
+  @@index([chatId, userId, fingerprint, createdAt])
+  @@index([createdAt])
 }
 
 model ChatAdmin {

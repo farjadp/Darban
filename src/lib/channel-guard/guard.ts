@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { GuardError, hasAdminRights } from "./access";
 import { handlePrivateMessage } from "./commands";
 import type { Update } from "./input";
-import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation, minutesInZone, withinWindow } from "./protocol";
+import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation, minutesInZone, withinWindow, fingerprint } from "./protocol";
 import type { RuleKey } from "./protocol";
 import { withChatLock } from "./store";
 import { getMember, telegram, TelegramError } from "./telegram";
@@ -252,6 +252,55 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
         targetId: user.id,
       });
       return;
+    }
+  }
+
+  // تنها قاعده‌هایی که می‌نویسند. سطر فقط وقتی ثبت می‌شود که یکی‌شان روشن باشد،
+  // پس گروهی که این‌ها را نمی‌خواهد هیچ نوشتنی اضافه‌ای نمی‌پردازد.
+  const rateMatch = matchRule("message_rate");
+  const repeatMatch = matchRule("duplicate_messages");
+  if (rateMatch || repeatMatch) {
+    const counterChat = (rateMatch ?? repeatMatch)!.chat;
+    const mark = fingerprint(message);
+    const rateWindow = rateMatch?.rule.limitWindowMinutes ?? 0;
+    const repeatWindow = repeatMatch?.rule.limitWindowMinutes ?? 0;
+    const keepMinutes = Math.max(rateWindow, repeatWindow, 1);
+    const since = new Date(at.getTime() - keepMinutes * 60000);
+
+    await db.guardMessageLog.create({ data: { chatId: counterChat.id, userId: user.id, fingerprint: mark, createdAt: at } });
+    // هرس بر پایه‌ی سن، همین‌جا. این جدول نباید به فهرست «جدول‌هایی که هرگز پاک نمی‌شوند» اضافه شود.
+    await db.guardMessageLog.deleteMany({ where: { chatId: counterChat.id, userId: user.id, createdAt: { lt: since } } });
+
+    if (rateMatch && rateMatch.rule.limitCount > 0 && rateWindow > 0 && !(rateMatch.chat.adminsExempt && await isAdmin())) {
+      const seen = await db.guardMessageLog.count({
+        where: { chatId: rateMatch.chat.id, userId: user.id, createdAt: { gte: new Date(at.getTime() - rateWindow * 60000) } },
+      });
+      if (seen > rateMatch.rule.limitCount) {
+        await enforce(message, rateMatch, {
+          key: "rate-lock",
+          actor: "system:message-rate",
+          action: "MESSAGE_RATE_DELETE",
+          reason: `حذف پیام فراتر از سقف ${rateMatch.rule.limitCount} پیام در ${rateWindow} دقیقه`,
+          targetId: user.id,
+        });
+        return;
+      }
+    }
+
+    if (repeatMatch && repeatMatch.rule.limitCount > 0 && repeatWindow > 0 && mark && !(repeatMatch.chat.adminsExempt && await isAdmin())) {
+      const repeats = await db.guardMessageLog.count({
+        where: { chatId: repeatMatch.chat.id, userId: user.id, fingerprint: mark, createdAt: { gte: new Date(at.getTime() - repeatWindow * 60000) } },
+      });
+      if (repeats > repeatMatch.rule.limitCount) {
+        await enforce(message, repeatMatch, {
+          key: "repeat-lock",
+          actor: "system:duplicate-messages",
+          action: "DUPLICATE_DELETE",
+          reason: `حذف پیام تکراری فراتر از ${repeatMatch.rule.limitCount} بار در ${repeatWindow} دقیقه`,
+          targetId: user.id,
+        });
+        return;
+      }
     }
   }
 
