@@ -87,6 +87,16 @@ export function hasHashtag(message: {
 export const RULE_KEYS = ["join_messages", "commands", "links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "word_limit", "message_rate", "duplicate_messages", "location", "contact", "poll", "via_bot", "game", "no_text", "latin", "arabic", "blocked_words", "silence"] as const;
 export type RuleKey = (typeof RULE_KEYS)[number];
 
+// قاعده‌ها برای نمایش دسته می‌شوند. ترتیب همین است که مدیر در فرم می‌بیند،
+// و هر قاعده باید دقیقاً در یک دسته باشد — تستی همین را نگه می‌دارد.
+export const RULE_GROUPS: { group: string; keys: readonly RuleKey[] }[] = [
+  { group: "content", keys: ["links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "no_text"] },
+  { group: "attachments", keys: ["location", "contact", "poll", "via_bot", "game"] },
+  { group: "language", keys: ["latin", "arabic", "blocked_words", "word_limit"] },
+  { group: "flooding", keys: ["message_rate", "duplicate_messages"] },
+  { group: "housekeeping", keys: ["join_messages", "commands", "silence"] },
+];
+
 // ساعت محلیِ خودِ گروه، نه ساعت سرور. منطقه‌ی زمانی نامعتبر به UTC برمی‌گردد
 // تا یک رشته‌ی خراب در دیتابیس کل مسیر پیام را نیندازد.
 export function minutesInZone(at: Date, timezone: string): number {

@@ -106,6 +106,12 @@ const copy = {
   rule_arabic: ["قفل حروف عربی و فارسی", "Lock Arabic and Persian letters"],
   rule_blocked_words: ["قفل کلمات ممنوع", "Lock blocked words"],
   rule_silence: ["سکوت گروه", "Group silence"],
+  group_content: ["محتوای پیام", "Message content"],
+  group_attachments: ["پیوست‌ها", "Attachments"],
+  group_language: ["زبان و کلمات", "Language and words"],
+  group_flooding: ["فلاد و تکرار", "Flooding and repeats"],
+  group_housekeeping: ["نظم گروه", "Group housekeeping"],
+  groupEnabledCount: ["روشن", "on"],
   wordListLabel: ["فهرست کلمات ممنوع", "Blocked words"],
   wordListHelp: ["یک کلمه در هر خط. تطبیق روی زیررشته است و به حروف بزرگ و کوچک حساس نیست.", "One word per line, matched as a substring, case-insensitive."],
   silenceHelp: ["سکوت با ساعت یعنی خاموشی زمان‌بندی‌شده؛ بدون ساعت یعنی قفل دستی تا وقتی خاموشش کنید.", "Silence with hours is a scheduled quiet period; with no hours it stays locked until you turn it off."],
@@ -212,6 +218,11 @@ export type DashboardCopy = { [Key in keyof typeof copy]: string };
 
 export function dashboardCopy(locale: Locale): DashboardCopy {
   return Object.fromEntries(Object.entries(copy).map(([key, values]) => [key, values[locale === "fa" ? 0 : 1]])) as DashboardCopy;
+}
+
+export function groupLabel(locale: Locale, group: string): string {
+  const c = dashboardCopy(locale) as unknown as Record<string, string>;
+  return c[`group_${group}`] ?? group;
 }
 
 export function ruleLabel(locale: Locale, rule: string): string {

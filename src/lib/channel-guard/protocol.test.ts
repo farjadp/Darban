@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, fingerprint, hasNoText, hasLatinLetters, hasArabicLetters, matchesBlockedWord, isViaBot, hasLocation, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, fingerprint, hasNoText, hasLatinLetters, hasArabicLetters, matchesBlockedWord, isViaBot, hasLocation, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly , RULE_KEYS, RULE_GROUPS } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -152,6 +152,16 @@ describe("word count limits", () => {
   });
   it("does not miscount on repeated whitespace", () => {
     expect(wordCountViolation({ text: "  یک    دو  " }, 3, 0)).toBe("short");
+  });
+});
+
+describe("rule grouping", () => {
+  const grouped = RULE_GROUPS.flatMap(entry => entry.keys);
+  it("puts every rule in a group, so a new lock cannot go missing from the form", () => {
+    expect([...grouped].sort()).toEqual([...RULE_KEYS].sort());
+  });
+  it("puts each rule in exactly one group", () => {
+    expect(new Set(grouped).size).toBe(grouped.length);
   });
 });
 

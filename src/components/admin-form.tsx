@@ -3,10 +3,10 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { Chat } from "@/lib/dashboard";
-import { dashboardCopy, mutationError, ruleLabel } from "@/lib/dashboard-copy";
-import { pathFor, type Locale } from "@/lib/i18n";
+import { dashboardCopy, groupLabel, mutationError, ruleLabel } from "@/lib/dashboard-copy";
+import { formatNumber, pathFor, type Locale } from "@/lib/i18n";
 import { PostEditor } from "@/components/post-editor";
-import { RULE_KEYS } from "@/lib/channel-guard/protocol";
+import { RULE_GROUPS, RULE_KEYS } from "@/lib/channel-guard/protocol";
 
 type Props = { disabled?: boolean; locale?: Locale } & (
   | { operation: "connect" }
@@ -166,25 +166,38 @@ export function AdminForm(props: Props) {
         <fieldset className="space-y-3 rounded-lg border border-line p-4">
           <legend className="px-1 text-sm font-medium">{c.ruleTable}</legend>
           <p className="text-sm text-muted">{c.ruleTableHelp}</p>
-          {RULE_KEYS.map(key => {
-            const saved = props.chat.rules.find(row => row.rule === key);
+          {RULE_GROUPS.map(({ group, keys }) => {
+            const on = keys.filter(key => props.chat.rules.find(row => row.rule === key)?.enabled).length;
             return (
-              <div key={key} className="flex flex-wrap items-end gap-3 border-t border-line pt-3 first:border-0 first:pt-0">
-                <label className="flex min-h-11 min-w-56 flex-1 items-center gap-3 text-sm">
-                  <input type="checkbox" name={`enabled_${key}`} defaultChecked={saved?.enabled ?? false} className="size-5 shrink-0 accent-forest" />
-                  {ruleLabel(locale, key)}
-                </label>
-                <div className="space-y-1"><label htmlFor={`${id}-${key}-start`} className="block text-xs text-muted">{c.windowFrom}</label><input id={`${id}-${key}-start`} name={`start_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.startMinute ?? null)} className={inputClass} /></div>
-                <div className="space-y-1"><label htmlFor={`${id}-${key}-end`} className="block text-xs text-muted">{c.windowTo}</label><input id={`${id}-${key}-end`} name={`end_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.endMinute ?? null)} className={inputClass} /></div>
-                <div className="space-y-1"><label htmlFor={`${id}-${key}-penalty`} className="block text-xs text-muted">{c.penalty}</label><select id={`${id}-${key}-penalty`} name={`penalty_${key}`} defaultValue={saved?.penalty ?? "DELETE"} className={inputClass}><option value="DELETE">{c.penaltyDelete}</option><option value="SILENCE">{c.penaltySilence}</option></select></div>
-                <div className="space-y-1"><label htmlFor={`${id}-${key}-mute`} className="block text-xs text-muted">{c.muteMinutes}</label><input id={`${id}-${key}-mute`} name={`mute_${key}`} type="number" min={1} max={10080} step={1} dir="ltr" defaultValue={saved?.muteMinutes ?? 60} className={inputClass} /></div>
-                {key === "blocked_words" && <div className="w-full space-y-1"><label htmlFor={`${id}-${key}-words`} className="block text-xs text-muted">{c.wordListLabel}</label><textarea id={`${id}-${key}-words`} name={`words_${key}`} rows={3} maxLength={4096} defaultValue={saved?.wordList ?? ""} className={inputClass} aria-describedby={`${id}-${key}-words-help`} /><p id={`${id}-${key}-words-help`} className="text-xs text-muted">{c.wordListHelp}</p></div>}
-                {key === "silence" && <p className="w-full text-xs text-muted">{c.silenceHelp}</p>}
-                {(key === "message_rate" || key === "duplicate_messages") && <>
-                  <div className="space-y-1"><label htmlFor={`${id}-${key}-count`} className="block text-xs text-muted">{c.limitCount}</label><input id={`${id}-${key}-count`} name={`count_${key}`} type="number" min={0} max={10000} step={1} dir="ltr" defaultValue={saved?.limitCount ?? 0} className={inputClass} /></div>
-                  <div className="space-y-1"><label htmlFor={`${id}-${key}-per`} className="block text-xs text-muted">{c.limitWindow}</label><input id={`${id}-${key}-per`} name={`per_${key}`} type="number" min={0} max={10080} step={1} dir="ltr" defaultValue={saved?.limitWindowMinutes ?? 0} className={inputClass} /></div>
-                </>}
-              </div>
+              <details key={group} open={on > 0} className="border-t border-line pt-3 first:border-0 first:pt-0">
+                <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">
+                  {groupLabel(locale, group)}
+                  {on > 0 && <span className="mx-2 rounded bg-canvas px-2 py-0.5 text-xs font-normal text-muted">{formatNumber(on, locale)} {c.groupEnabledCount}</span>}
+                </summary>
+                <div className="space-y-3 pt-1">
+                  {keys.map(key => {
+                    const saved = props.chat.rules.find(row => row.rule === key);
+                    return (
+                      <div key={key} className="flex flex-wrap items-end gap-3 border-t border-line pt-3 first:border-0 first:pt-0">
+                        <label className="flex min-h-11 min-w-56 flex-1 items-center gap-3 text-sm">
+                          <input type="checkbox" name={`enabled_${key}`} defaultChecked={saved?.enabled ?? false} className="size-5 shrink-0 accent-forest" />
+                          {ruleLabel(locale, key)}
+                        </label>
+                        <div className="space-y-1"><label htmlFor={`${id}-${key}-start`} className="block text-xs text-muted">{c.windowFrom}</label><input id={`${id}-${key}-start`} name={`start_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.startMinute ?? null)} className={inputClass} /></div>
+                        <div className="space-y-1"><label htmlFor={`${id}-${key}-end`} className="block text-xs text-muted">{c.windowTo}</label><input id={`${id}-${key}-end`} name={`end_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.endMinute ?? null)} className={inputClass} /></div>
+                        <div className="space-y-1"><label htmlFor={`${id}-${key}-penalty`} className="block text-xs text-muted">{c.penalty}</label><select id={`${id}-${key}-penalty`} name={`penalty_${key}`} defaultValue={saved?.penalty ?? "DELETE"} className={inputClass}><option value="DELETE">{c.penaltyDelete}</option><option value="SILENCE">{c.penaltySilence}</option></select></div>
+                        <div className="space-y-1"><label htmlFor={`${id}-${key}-mute`} className="block text-xs text-muted">{c.muteMinutes}</label><input id={`${id}-${key}-mute`} name={`mute_${key}`} type="number" min={1} max={10080} step={1} dir="ltr" defaultValue={saved?.muteMinutes ?? 60} className={inputClass} /></div>
+                        {key === "blocked_words" && <div className="w-full space-y-1"><label htmlFor={`${id}-${key}-words`} className="block text-xs text-muted">{c.wordListLabel}</label><textarea id={`${id}-${key}-words`} name={`words_${key}`} rows={3} maxLength={4096} defaultValue={saved?.wordList ?? ""} className={inputClass} aria-describedby={`${id}-${key}-words-help`} /><p id={`${id}-${key}-words-help`} className="text-xs text-muted">{c.wordListHelp}</p></div>}
+                        {key === "silence" && <p className="w-full text-xs text-muted">{c.silenceHelp}</p>}
+                        {(key === "message_rate" || key === "duplicate_messages") && <>
+                          <div className="space-y-1"><label htmlFor={`${id}-${key}-count`} className="block text-xs text-muted">{c.limitCount}</label><input id={`${id}-${key}-count`} name={`count_${key}`} type="number" min={0} max={10000} step={1} dir="ltr" defaultValue={saved?.limitCount ?? 0} className={inputClass} /></div>
+                          <div className="space-y-1"><label htmlFor={`${id}-${key}-per`} className="block text-xs text-muted">{c.limitWindow}</label><input id={`${id}-${key}-per`} name={`per_${key}`} type="number" min={0} max={10080} step={1} dir="ltr" defaultValue={saved?.limitWindowMinutes ?? 0} className={inputClass} /></div>
+                        </>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
             );
           })}
         </fieldset>
