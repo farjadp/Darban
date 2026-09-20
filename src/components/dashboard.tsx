@@ -3,8 +3,11 @@ import type { ReactNode } from "react";
 import { AdminForm } from "@/components/admin-form";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { candidateIds, type Chat, type DashboardData, type View } from "@/lib/dashboard";
-import { actionLabel, dashboardCopy, statusLabel } from "@/lib/dashboard-copy";
+import { actionLabel, dashboardCopy, ruleLabel, statusLabel } from "@/lib/dashboard-copy";
 import { formatDate, formatNumber, pathFor, type Locale } from "@/lib/i18n";
+
+/** Minutes from midnight shown as HH:MM. */
+const clock = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 const secondaryLink = "inline-flex min-h-11 items-center justify-center rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-forest transition-colors hover:bg-canvas";
 const primaryLink = "inline-flex min-h-11 items-center justify-center rounded-lg bg-forest px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-900";
@@ -41,14 +44,17 @@ function Rules({ chat, locale }: { chat: Chat; locale: Locale }) {
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.verification}</dt><dd className="font-medium">{chat.verification ? c.required : c.disabled}</dd></div>
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.wait}</dt><dd className="whitespace-nowrap font-medium">{formatNumber(chat.waitHours, locale)} {c.hours}</dd></div>
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.commentGate}</dt><dd className="font-medium">{chat.commentGate ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.deleteJoinMessages}</dt><dd className="font-medium">{chat.deleteJoinMessages ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockCommands}</dt><dd className="font-medium">{chat.lockCommands ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockLinks}</dt><dd className="font-medium">{chat.lockLinks ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockMedia}</dt><dd className="font-medium">{chat.lockMedia ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockForwards}</dt><dd className="font-medium">{chat.lockForwards ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockEmoji}</dt><dd className="font-medium">{chat.lockEmoji ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockEmptyEmoji}</dt><dd className="font-medium">{chat.lockEmptyEmoji ? c.enabled : c.disabled}</dd></div>
-    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.lockHashtags}</dt><dd className="font-medium">{chat.lockHashtags ? c.enabled : c.disabled}</dd></div>
+    {chat.rules.filter(rule => rule.enabled).map(rule => (
+      <div key={rule.rule} className="flex justify-between gap-5 py-4">
+        <dt className="text-muted">{ruleLabel(locale, rule.rule)}</dt>
+        <dd className="font-medium">
+          {rule.startMinute === null || rule.endMinute === null ? c.allHours : `${clock(rule.startMinute)} — ${clock(rule.endMinute)}`}
+          {" · "}
+          {rule.penalty === "SILENCE" ? `${c.penaltySilence} (${formatNumber(rule.muteMinutes, locale)})` : c.penaltyDelete}
+        </dd>
+      </div>
+    ))}
+    <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.timezoneLabel}</dt><dd className="font-medium" dir="ltr">{chat.timezone}</dd></div>
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.adminsExempt}</dt><dd className="font-medium">{chat.adminsExempt ? c.enabled : c.disabled}</dd></div>
     <div className="flex justify-between gap-5 py-4"><dt className="text-muted">{c.wordLimits}</dt><dd className="font-medium">{chat.minWords || chat.maxWords ? `${chat.minWords || c.noLimit} — ${chat.maxWords || c.noLimit}` : c.disabled}</dd></div>
   </dl>;
@@ -131,7 +137,7 @@ export function Dashboard({ data, view, admin, preview = false, configurationRea
       {chat && view === "members" && <Section title={c.members} description={c.membersDescription}><div className="mb-6 space-y-3"><Note>{c.observedWarning}</Note><Note>{c.joinWarning}</Note><Note>{c.verificationWarning}</Note></div><Members data={data} locale={locale} disabled={disabled} /></Section>}
       {chat && view === "alerts" && <Section title={c.reviewQueue} description={c.alertsDescription}><Alerts data={data} locale={locale} disabled={disabled} /></Section>}
       {chat && view === "events" && <Section title={c.events}><div className="mb-6"><Note>{c.unknownWarning}</Note></div><Events data={data} locale={locale} /></Section>}
-      {chat && view === "settings" && <Section title={c.rules} description={c.selectedOnly}><div className="max-w-3xl"><div className="mb-7 space-y-4"><Note>{c.nativeWarning}</Note><Note>{c.joinWarning}</Note><Note>{c.verificationWarning}</Note></div><AdminForm key={`${chat.id}-${chat.waitHours}-${chat.verification}-${chat.commentGate}-${chat.deleteJoinMessages}-${chat.lockCommands}-${chat.lockLinks}-${chat.lockMedia}-${chat.lockForwards}-${chat.lockEmoji}-${chat.lockEmptyEmoji}-${chat.lockHashtags}-${chat.adminsExempt}-${chat.minWords}-${chat.maxWords}-${chat.discussionChatId}`} locale={locale} operation="settings" chat={chat} disabled={disabled} /></div></Section>}
+      {chat && view === "settings" && <Section title={c.rules} description={c.selectedOnly}><div className="max-w-3xl"><div className="mb-7 space-y-4"><Note>{c.nativeWarning}</Note><Note>{c.joinWarning}</Note><Note>{c.verificationWarning}</Note></div><AdminForm key={`${chat.id}-${chat.waitHours}-${chat.verification}-${chat.commentGate}-${chat.adminsExempt}-${chat.minWords}-${chat.maxWords}-${chat.timezone}-${chat.rules.map(r => `${r.rule}:${r.enabled}:${r.startMinute}:${r.endMinute}:${r.penalty}:${r.muteMinutes}`).join(",")}-${chat.discussionChatId}`} locale={locale} operation="settings" chat={chat} disabled={disabled} /></div></Section>}
 
       {(view === "overview" || !chat) && <Section id="connect" title={c.yourChats} description={c.chatScope}>
         {chats.length > 0 && <ul className="mb-7 divide-y divide-line">{chats.map((item) => <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><Link href={href("overview", item.id)} className={textLink}><bdi className="break-words">{item.title}</bdi></Link><div className="flex flex-wrap items-center gap-4"><bdi dir="ltr" className="font-mono text-xs text-muted">{item.id}</bdi><span className="text-xs text-muted">{item.active ? c.active : c.inactive}</span></div></li>)}</ul>}

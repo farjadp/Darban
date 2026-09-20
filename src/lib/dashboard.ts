@@ -2,7 +2,13 @@ export const views = ["overview", "posts", "members", "alerts", "events", "setti
 export type View = (typeof views)[number];
 export type Chat = {
   id: string; title: string; type: string; username: string | null; active: boolean;
-  waitHours: number; verification: boolean; commentGate: boolean; deleteJoinMessages: boolean; lockCommands: boolean; lockLinks: boolean; lockMedia: boolean; lockForwards: boolean; lockEmoji: boolean; lockEmptyEmoji: boolean; lockHashtags: boolean; adminsExempt: boolean; minWords: number; maxWords: number; discussionChatId: string | null;
+  waitHours: number; verification: boolean; commentGate: boolean; adminsExempt: boolean;
+  minWords: number; maxWords: number; timezone: string; discussionChatId: string | null;
+  rules: RuleSetting[];
+};
+export type RuleSetting = {
+  rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null;
+  penalty: string; muteMinutes: number;
 };
 export type DashboardData = {
   chats: Chat[];
@@ -39,9 +45,9 @@ export function candidateIds(value: unknown): string[] {
 export async function loadDashboard(adminId: string, requestedChat?: string): Promise<DashboardData> {
   const { db } = await import("@/lib/db");
   const scope = { admins: { some: { userId: adminId } } };
-  const chats = await db.guardChat.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 50 });
+  const chats = await db.guardChat.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 50, include: { rules: true } });
   const chat = requestedChat
-    ? await db.guardChat.findFirst({ where: { id: requestedChat, ...scope } })
+    ? await db.guardChat.findFirst({ where: { id: requestedChat, ...scope }, include: { rules: true } })
     : chats[0] ?? null;
   const empty: DashboardData = { chats, chat, unavailableChat: Boolean(requestedChat && !chat), counts: { members: 0, posts: 0, alerts: 0 }, members: [], posts: [], alerts: [], events: [] };
   if (!chat) return empty;
@@ -77,7 +83,10 @@ export async function loadDashboard(adminId: string, requestedChat?: string): Pr
   };
 }
 export function sampleDashboard(): DashboardData {
-  const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, lockHashtags: false, adminsExempt: true, minWords: 0, maxWords: 0, discussionChatId: "-100000000002" };
+  const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, adminsExempt: true, minWords: 0, maxWords: 0, timezone: "Asia/Tehran", discussionChatId: "-100000000002", rules: [
+    { rule: "links", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60 },
+    { rule: "media", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120 },
+  ] };
   const members: DashboardData["members"] = [
     { userId: "900000001", name: "کاربر نمونهٔ اول", joinedAt: "2026-09-17T08:00:00Z", verifiedAt: "2026-09-17T08:10:00Z", firstVotedAt: "2026-09-18T09:00:00Z", banned: false, present: true },
     { userId: "900000002", name: "کاربر نمونهٔ دوم", joinedAt: "2026-09-17T07:00:00Z", verifiedAt: "2026-09-17T07:10:00Z", firstVotedAt: "2026-09-18T09:00:03Z", banned: false, present: true },

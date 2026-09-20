@@ -11,22 +11,16 @@ import { handleUpdate } from "./guard";
 beforeEach(() => { vi.resetAllMocks(); mocks.db.guardUpdate.create.mockResolvedValue({}); mocks.db.guardUpdate.update.mockResolvedValue({}); mocks.db.guardChat.findMany.mockResolvedValue([]); mocks.telegram.mockResolvedValue(true); });
 // ردیف GuardChat در دیتابیس هیچ‌وقت ستون کم ندارد، پس fixture هم نباید داشته باشد.
 // هر بار که این‌ها دستی نوشته شدند، افزودن یک ستون جدید تست‌ها را به‌دلیل اشتباه شکست.
-const chatRow = (overrides: Record<string, unknown>) => ({
+const chatRow = ({ rules = [], ...overrides }: Record<string, unknown> & { rules?: Record<string, unknown>[] }) => ({
   active: true,
   verification: false,
   commentGate: false,
-  deleteJoinMessages: false,
-  lockCommands: false,
-  lockLinks: false,
-  lockHashtags: false,
-  lockMedia: false,
-  lockForwards: false,
-  lockEmoji: false,
-  lockEmptyEmoji: false,
   adminsExempt: true,
   minWords: 0,
   maxWords: 0,
+  timezone: "UTC",
   ...overrides,
+  rules: rules.map(rule => ({ enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, ...rule })),
 });
 
 describe("webhook behavior", () => {
@@ -42,7 +36,7 @@ describe("webhook behavior", () => {
     expect(mocks.db.guardEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ chatId: "-100", action: "COMMENT_DELETE" }) }));
   });
   it("deletes join and leave service messages when deleteJoinMessages is enabled", async () => {
-    const group = chatRow({ id: "-200", deleteJoinMessages: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "join_messages" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     await handleUpdate({
       update_id: 7,
@@ -59,7 +53,7 @@ describe("webhook behavior", () => {
     );
   });
   it("deletes slash commands sent by regular members when lockCommands is enabled", async () => {
-    const group = chatRow({ id: "-200", lockCommands: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "commands" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -77,7 +71,7 @@ describe("webhook behavior", () => {
     );
   });
   it("allows slash commands sent by admins even when lockCommands is enabled", async () => {
-    const group = chatRow({ id: "-200", lockCommands: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "commands" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator" });
     await handleUpdate({
@@ -95,7 +89,7 @@ describe("webhook behavior", () => {
     );
   });
   it("reads the chat rules once and asks Telegram about the sender once, whatever the message trips", async () => {
-    const group = chatRow({ id: "-200", active: true, lockLinks: true, lockMedia: true, lockForwards: true, lockEmoji: true, commentGate: true });
+    const group = chatRow({ id: "-200", active: true, commentGate: true, rules: [{ rule: "links" }, { rule: "media" }, { rule: "forwards" }, { rule: "emoji" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator" });
     await handleUpdate({
@@ -113,7 +107,7 @@ describe("webhook behavior", () => {
     expect(mocks.getMember).toHaveBeenCalledTimes(1);
   });
   it("deletes messages containing links or mentions sent by regular members when lockLinks is enabled", async () => {
-    const group = chatRow({ id: "-200", lockLinks: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "links" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -131,7 +125,7 @@ describe("webhook behavior", () => {
     );
   });
   it("allows messages containing links or mentions sent by admins even when lockLinks is enabled", async () => {
-    const group = chatRow({ id: "-200", lockLinks: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "links" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator" });
     await handleUpdate({
@@ -149,7 +143,7 @@ describe("webhook behavior", () => {
     );
   });
   it("applies a lock to an admin when the chat turns admin exemption off", async () => {
-    const group = chatRow({ id: "-200", lockLinks: true, active: true, adminsExempt: false });
+    const group = chatRow({ id: "-200", active: true, adminsExempt: false, rules: [{ rule: "links" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator" });
     await handleUpdate({
@@ -166,7 +160,7 @@ describe("webhook behavior", () => {
     expect(mocks.getMember).not.toHaveBeenCalled();
   });
   it("deletes a message under the minimum word count", async () => {
-    const group = chatRow({ id: "-200", active: true, adminsExempt: true, minWords: 3, maxWords: 0 });
+    const group = chatRow({ id: "-200", active: true, adminsExempt: true, minWords: 3, maxWords: 0, rules: [{ rule: "word_limit" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -184,7 +178,7 @@ describe("webhook behavior", () => {
     );
   });
   it("leaves a sticker alone even under a minimum word count", async () => {
-    const group = chatRow({ id: "-200", active: true, adminsExempt: true, minWords: 3, maxWords: 0 });
+    const group = chatRow({ id: "-200", active: true, adminsExempt: true, minWords: 3, maxWords: 0, rules: [{ rule: "word_limit" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -198,8 +192,52 @@ describe("webhook behavior", () => {
     });
     expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
   });
+  it("holds a rule back outside its hours and applies it inside them", async () => {
+    // ۰۰:۰۰ تا ۰۶:۰۰ به وقت تهران، یعنی ۲۰:۳۰ تا ۰۲:۳۰ به وقت UTC
+    const group = chatRow({ id: "-200", timezone: "Asia/Tehran", rules: [{ rule: "links", startMinute: 0, endMinute: 360 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    const message = { message_id: 40, chat: { id: "-200", type: "supergroup" }, from: { id: "8", first_name: "عضو عادی" }, text: "https://t.me/x" };
+
+    vi.setSystemTime(new Date("2026-09-20T12:00:00Z"));
+    await handleUpdate({ update_id: 40, message });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+
+    vi.setSystemTime(new Date("2026-09-20T22:00:00Z"));
+    await handleUpdate({ update_id: 41, message: { ...message, message_id: 41 } });
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 41 });
+    vi.useRealTimers();
+  });
+  it("mutes the sender as well when the penalty is SILENCE", async () => {
+    vi.setSystemTime(new Date("2026-09-20T12:00:00Z"));
+    const group = chatRow({ id: "-200", rules: [{ rule: "links", penalty: "SILENCE", muteMinutes: 120 }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 42,
+      message: { message_id: 42, chat: { id: "-200", type: "supergroup" }, from: { id: "9", first_name: "عضو عادی" }, text: "https://t.me/x" },
+    });
+    // پیام هم حذف می‌شود: گذاشتن تبلیغ سر جایش و ساکت‌کردن فرستنده بی‌معنی است
+    expect(mocks.telegram).toHaveBeenCalledWith("deleteMessage", { chat_id: "-200", message_id: 42 });
+    expect(mocks.telegram).toHaveBeenCalledWith("restrictChatMember", expect.objectContaining({
+      chat_id: "-200",
+      user_id: "9",
+      until_date: Math.floor(new Date("2026-09-20T12:00:00Z").getTime() / 1000) + 120 * 60,
+    }));
+    vi.useRealTimers();
+  });
+  it("does not mute when the penalty is left at DELETE", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "links" }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 43,
+      message: { message_id: 43, chat: { id: "-200", type: "supergroup" }, from: { id: "9", first_name: "عضو عادی" }, text: "https://t.me/x" },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("restrictChatMember", expect.anything());
+  });
   it("deletes messages containing hashtags sent by regular members when lockHashtags is enabled", async () => {
-    const group = chatRow({ id: "-200", lockHashtags: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "hashtags" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -217,7 +255,7 @@ describe("webhook behavior", () => {
     );
   });
   it("leaves hashtags alone when only lockLinks is enabled", async () => {
-    const group = chatRow({ id: "-200", lockLinks: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "links" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -232,7 +270,7 @@ describe("webhook behavior", () => {
     expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
   });
   it("deletes media messages sent by regular members when lockMedia is enabled", async () => {
-    const group = chatRow({ id: "-200", lockMedia: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "media" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -250,7 +288,7 @@ describe("webhook behavior", () => {
     );
   });
   it("allows media messages sent by admins even when lockMedia is enabled", async () => {
-    const group = chatRow({ id: "-200", lockMedia: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "media" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator" });
     await handleUpdate({
@@ -268,7 +306,7 @@ describe("webhook behavior", () => {
     );
   });
   it("deletes forwarded messages sent by regular members when lockForwards is enabled", async () => {
-    const group = chatRow({ id: "-200", lockForwards: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "forwards" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member" });
     await handleUpdate({
@@ -287,7 +325,7 @@ describe("webhook behavior", () => {
     );
   });
   it("allows forwarded messages sent by admins even when lockForwards is enabled", async () => {
-    const group = chatRow({ id: "-200", lockForwards: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "forwards" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator" });
     await handleUpdate({
@@ -306,7 +344,7 @@ describe("webhook behavior", () => {
     );
   });
   it("allows automatic forwards from linked channel even when lockForwards is enabled", async () => {
-    const group = chatRow({ id: "-200", lockForwards: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "forwards" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     await handleUpdate({
       update_id: 16,
@@ -324,7 +362,7 @@ describe("webhook behavior", () => {
     );
   });
   it("deletes messages containing emoji when lockEmoji is enabled for non-admins", async () => {
-    const group = chatRow({ id: "-200", lockEmoji: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "emoji" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member", user: { id: 10 } });
     await handleUpdate({
@@ -349,7 +387,7 @@ describe("webhook behavior", () => {
     );
   });
   it("exempts admins from emoji deletion when lockEmoji is enabled", async () => {
-    const group = chatRow({ id: "-200", lockEmoji: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "emoji" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "administrator", user: { id: 10 } });
     await handleUpdate({
@@ -367,7 +405,7 @@ describe("webhook behavior", () => {
     );
   });
   it("deletes emoji-only spam when lockEmptyEmoji is enabled", async () => {
-    const group = chatRow({ id: "-200", lockEmoji: false, lockEmptyEmoji: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "empty_emoji" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member", user: { id: 10 } });
     await handleUpdate({
@@ -392,7 +430,7 @@ describe("webhook behavior", () => {
     );
   });
   it("allows mixed text and emoji when only lockEmptyEmoji is enabled", async () => {
-    const group = chatRow({ id: "-200", lockEmoji: false, lockEmptyEmoji: true, active: true });
+    const group = chatRow({ id: "-200", active: true, rules: [{ rule: "empty_emoji" }] });
     mocks.db.guardChat.findMany.mockResolvedValue([group]);
     mocks.getMember.mockResolvedValue({ status: "member", user: { id: 10 } });
     await handleUpdate({

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
     account: { findUnique: vi.fn() },
     chatAdmin: { findUnique: vi.fn(), upsert: vi.fn() },
     guardChat: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
+    guardChatRule: { upsert: vi.fn() },
     guardEvent: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     guardPost: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     guardUser: { upsert: vi.fn() },
@@ -270,41 +271,38 @@ describe("defensive admin operations", () => {
     await expect(saveSettings({ chatId, waitHours: 24, verification: true, commentGate: true, discussionChatId: "-1234" }, actorId)).rejects.toMatchObject({ status: 400 });
     expect(mocks.db.guardChat.update).not.toHaveBeenCalled();
   });
-  it("supports comment gating in a directly managed supergroup", async () => {
+  it("saves the chat-level settings and upserts every rule", async () => {
     mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: true, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: true, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null } });
+    await saveSettings({
+      chatId, waitHours: 0, verification: false, commentGate: true,
+      adminsExempt: false, minWords: 3, maxWords: 0, timezone: "Asia/Tehran",
+      rules: [
+        { rule: "links", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120 },
+        { rule: "media", enabled: false, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60 },
+      ],
+      discussionChatId: null,
+    }, actorId);
+    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({
+      where: { id: chatId },
+      data: { waitHours: 0, verification: false, commentGate: true, adminsExempt: false, minWords: 3, maxWords: 0, timezone: "Asia/Tehran", discussionChatId: null },
+    });
+    expect(mocks.db.guardChatRule.upsert).toHaveBeenCalledWith({
+      where: { chatId_rule: { chatId, rule: "links" } },
+      create: { chatId, rule: "links", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120 },
+      update: { enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120 },
+    });
+    // خاموش‌کردن یک قاعده هم باید نوشته شود، وگرنه خاموشی ذخیره نمی‌شد
+    expect(mocks.db.guardChatRule.upsert).toHaveBeenCalledTimes(2);
     expect([...events.values()][0]).toMatchObject({ action: "settings", actorId, status: "SUCCEEDED" });
   });
-  it("supports enabling join/leave message deletion in a supergroup", async () => {
-    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: true, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: true, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null } });
-  });
-  it("supports enabling slash command locking in a supergroup", async () => {
-    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: true, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: true, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null } });
-  });
-  it("supports enabling link/mention locking in a supergroup", async () => {
-    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: true, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: true, lockMedia: false, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null } });
-  });
-  it("supports enabling media locking in a supergroup", async () => {
-    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: true, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: true, lockForwards: false, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null } });
-  });
-  it("supports enabling forward locking in a supergroup", async () => {
-    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: true, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: true, lockEmoji: false, lockEmptyEmoji: false, discussionChatId: null } });
-  });
-  it("supports enabling emoji and empty-emoji locking in a supergroup", async () => {
-    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "supergroup" } });
-    await saveSettings({ chatId, waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: true, lockEmptyEmoji: true, discussionChatId: null }, actorId);
-    expect(mocks.db.guardChat.update).toHaveBeenCalledWith({ where: { id: chatId }, data: { waitHours: 0, verification: false, commentGate: false, deleteJoinMessages: false, lockCommands: false, lockLinks: false, lockMedia: false, lockForwards: false, lockEmoji: true, lockEmptyEmoji: true, discussionChatId: null } });
+  it("refuses to enable a rule on a channel with no discussion group", async () => {
+    mocks.db.chatAdmin.findUnique.mockResolvedValue({ chat: { ...chat, type: "channel" } });
+    await expect(saveSettings({
+      chatId, waitHours: 0, verification: false, commentGate: false,
+      rules: [{ rule: "links", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60 }],
+      discussionChatId: null,
+    }, actorId)).rejects.toMatchObject({ status: 400 });
+    expect(mocks.db.guardChat.update).not.toHaveBeenCalled();
   });
   it("requires a grant and bot delete permission for the linked discussion group", async () => {
     mocks.telegram.mockResolvedValue({ id: Number(chatId), linked_chat_id: -1234 });

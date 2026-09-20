@@ -3,9 +3,10 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { Chat } from "@/lib/dashboard";
-import { dashboardCopy, mutationError } from "@/lib/dashboard-copy";
+import { dashboardCopy, mutationError, ruleLabel } from "@/lib/dashboard-copy";
 import { pathFor, type Locale } from "@/lib/i18n";
 import { PostEditor } from "@/components/post-editor";
+import { RULE_KEYS } from "@/lib/channel-guard/protocol";
 
 type Props = { disabled?: boolean; locale?: Locale } & (
   | { operation: "connect" }
@@ -20,6 +21,16 @@ type Props = { disabled?: boolean; locale?: Locale } & (
 function messageNumber(raw: string): number {
   const match = /([0-9]{1,10})\s*$/.exec(raw.trim());
   return match ? Number(match[1]) : 0;
+}
+/** A time input gives "HH:MM"; the rule window is stored as minutes from midnight. Empty means all hours. */
+function clockMinutes(value: FormDataEntryValue | null): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value ?? ""));
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+function clockValue(minutes: number | null): string {
+  if (minutes === null) return "";
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 }
 const inputClass = "min-h-11 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm leading-6 text-ink placeholder:text-muted focus:border-forest focus:outline-2 focus:outline-offset-2 focus:outline-forest disabled:bg-canvas";
 const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-lg bg-forest px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted";
@@ -48,7 +59,25 @@ export function AdminForm(props: Props) {
     if (props.operation === "connect") payload.chatId = String(fields.get("chatId") ?? "").trim();
     if (props.operation === "publish") payload.text = String(fields.get("text") ?? "").trim();
     if (props.operation === "moderate") payload = { ...payload, targetId: props.targetId, action: props.action, reason: String(fields.get("reason") ?? "").trim() };
-    if (props.operation === "settings") payload = { ...payload, waitHours: Number(fields.get("waitHours")), verification: fields.get("verification") === "on", commentGate: fields.get("commentGate") === "on", deleteJoinMessages: fields.get("deleteJoinMessages") === "on", lockCommands: fields.get("lockCommands") === "on", lockLinks: fields.get("lockLinks") === "on", lockMedia: fields.get("lockMedia") === "on", lockForwards: fields.get("lockForwards") === "on", lockEmoji: fields.get("lockEmoji") === "on", lockEmptyEmoji: fields.get("lockEmptyEmoji") === "on", lockHashtags: fields.get("lockHashtags") === "on", adminsExempt: fields.get("adminsExempt") === "on", minWords: Number(fields.get("minWords")), maxWords: Number(fields.get("maxWords")), discussionChatId: String(fields.get("discussionChatId") ?? "").trim() || null };
+    if (props.operation === "settings") payload = {
+      ...payload,
+      waitHours: Number(fields.get("waitHours")),
+      verification: fields.get("verification") === "on",
+      commentGate: fields.get("commentGate") === "on",
+      adminsExempt: fields.get("adminsExempt") === "on",
+      minWords: Number(fields.get("minWords")),
+      maxWords: Number(fields.get("maxWords")),
+      timezone: String(fields.get("timezone") ?? "UTC").trim() || "UTC",
+      rules: RULE_KEYS.map(key => ({
+        rule: key,
+        enabled: fields.get(`enabled_${key}`) === "on",
+        startMinute: clockMinutes(fields.get(`start_${key}`)),
+        endMinute: clockMinutes(fields.get(`end_${key}`)),
+        penalty: fields.get(`penalty_${key}`) === "SILENCE" ? "SILENCE" : "DELETE",
+        muteMinutes: Number(fields.get(`mute_${key}`)) || 60,
+      })),
+      discussionChatId: String(fields.get("discussionChatId") ?? "").trim() || null,
+    };
     if (props.operation === "review") payload.alertId = props.alertId;
     if (props.operation === "sync") payload.postId = props.postId;
     if (props.operation === "attach") payload = { ...payload, postId: props.postId, messageId: messageNumber(String(fields.get("messageId") ?? "")) };
@@ -126,14 +155,26 @@ export function AdminForm(props: Props) {
         <div className="max-w-xs space-y-2"><label htmlFor={`${id}-hours`} className="block text-sm font-medium">{c.waitHoursLabel}</label><input id={`${id}-hours`} name="waitHours" type="number" min={0} max={168} step={1} required defaultValue={props.chat.waitHours} className={inputClass} aria-describedby={`${id}-hours-help`} /><p id={`${id}-hours-help`} className="text-sm text-muted">{c.waitRange}</p></div>
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="verification" defaultChecked={props.chat.verification} className="size-5 shrink-0 accent-forest" />{c.verifyBeforeVote}</label>
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="commentGate" defaultChecked={props.chat.commentGate} className="size-5 shrink-0 accent-forest" />{c.gateComments}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="deleteJoinMessages" defaultChecked={props.chat.deleteJoinMessages} className="size-5 shrink-0 accent-forest" />{c.deleteJoinMessagesLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockCommands" defaultChecked={props.chat.lockCommands} className="size-5 shrink-0 accent-forest" />{c.lockCommandsLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockLinks" defaultChecked={props.chat.lockLinks} className="size-5 shrink-0 accent-forest" />{c.lockLinksLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockMedia" defaultChecked={props.chat.lockMedia} className="size-5 shrink-0 accent-forest" />{c.lockMediaLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockForwards" defaultChecked={props.chat.lockForwards} className="size-5 shrink-0 accent-forest" />{c.lockForwardsLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockEmoji" defaultChecked={props.chat.lockEmoji} className="size-5 shrink-0 accent-forest" />{c.lockEmojiLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockEmptyEmoji" defaultChecked={props.chat.lockEmptyEmoji} className="size-5 shrink-0 accent-forest" />{c.lockEmptyEmojiLabel}</label>
-        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="lockHashtags" defaultChecked={props.chat.lockHashtags} className="size-5 shrink-0 accent-forest" />{c.lockHashtagsLabel}</label>
+        <fieldset className="space-y-3 rounded-lg border border-line p-4">
+          <legend className="px-1 text-sm font-medium">{c.ruleTable}</legend>
+          <p className="text-sm text-muted">{c.ruleTableHelp}</p>
+          {RULE_KEYS.map(key => {
+            const saved = props.chat.rules.find(row => row.rule === key);
+            return (
+              <div key={key} className="flex flex-wrap items-end gap-3 border-t border-line pt-3 first:border-0 first:pt-0">
+                <label className="flex min-h-11 min-w-56 flex-1 items-center gap-3 text-sm">
+                  <input type="checkbox" name={`enabled_${key}`} defaultChecked={saved?.enabled ?? false} className="size-5 shrink-0 accent-forest" />
+                  {ruleLabel(locale, key)}
+                </label>
+                <div className="space-y-1"><label htmlFor={`${id}-${key}-start`} className="block text-xs text-muted">{c.windowFrom}</label><input id={`${id}-${key}-start`} name={`start_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.startMinute ?? null)} className={inputClass} /></div>
+                <div className="space-y-1"><label htmlFor={`${id}-${key}-end`} className="block text-xs text-muted">{c.windowTo}</label><input id={`${id}-${key}-end`} name={`end_${key}`} type="time" dir="ltr" defaultValue={clockValue(saved?.endMinute ?? null)} className={inputClass} /></div>
+                <div className="space-y-1"><label htmlFor={`${id}-${key}-penalty`} className="block text-xs text-muted">{c.penalty}</label><select id={`${id}-${key}-penalty`} name={`penalty_${key}`} defaultValue={saved?.penalty ?? "DELETE"} className={inputClass}><option value="DELETE">{c.penaltyDelete}</option><option value="SILENCE">{c.penaltySilence}</option></select></div>
+                <div className="space-y-1"><label htmlFor={`${id}-${key}-mute`} className="block text-xs text-muted">{c.muteMinutes}</label><input id={`${id}-${key}-mute`} name={`mute_${key}`} type="number" min={1} max={10080} step={1} dir="ltr" defaultValue={saved?.muteMinutes ?? 60} className={inputClass} /></div>
+              </div>
+            );
+          })}
+        </fieldset>
+        <div className="max-w-xs space-y-2"><label htmlFor={`${id}-timezone`} className="block text-sm font-medium">{c.timezoneLabel}</label><input id={`${id}-timezone`} name="timezone" dir="ltr" defaultValue={props.chat.timezone} placeholder="Asia/Tehran" className={inputClass} aria-describedby={`${id}-timezone-help`} /><p id={`${id}-timezone-help`} className="text-sm text-muted">{c.timezoneHelp}</p></div>
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="adminsExempt" defaultChecked={props.chat.adminsExempt} className="size-5 shrink-0 accent-forest" />{c.adminsExemptLabel}</label>
         <div className="flex flex-wrap gap-5">
           <div className="max-w-xs space-y-2"><label htmlFor={`${id}-minwords`} className="block text-sm font-medium">{c.minWordsLabel}</label><input id={`${id}-minwords`} name="minWords" type="number" min={0} max={4096} step={1} required defaultValue={props.chat.minWords} className={inputClass} aria-describedby={`${id}-words-help`} /></div>

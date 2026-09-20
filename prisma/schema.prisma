@@ -25,6 +25,7 @@ model GuardChat {
   lockEmptyEmoji   Boolean       @default(false)
   lockHashtags     Boolean       @default(false)
   adminsExempt     Boolean       @default(true)
+  timezone         String        @default("UTC")
   minWords         Int           @default(0)
   maxWords         Int           @default(0)
   discussionChatId String?       @unique
@@ -34,6 +35,25 @@ model GuardChat {
   posts            GuardPost[]
   alerts           GuardAlert[]
   events           GuardEvent[]
+  rules            GuardChatRule[]
+}
+
+// یک ردیف به ازای هر قاعده‌ی هر چت. قبلاً هر قفل یک ستون بولی روی GuardChat بود،
+// یعنی هر قفل تازه سه ستون (وضعیت، پنجره، مجازات) به جدول اضافه می‌کرد.
+// startMinute و endMinute دقیقه از نیمه‌شب‌اند، در منطقه‌ی زمانی خودِ چت.
+// هر دو null یعنی قاعده در تمام ساعات اجرا می‌شود.
+model GuardChatRule {
+  chatId      String
+  rule        String
+  enabled     Boolean   @default(false)
+  startMinute Int?
+  endMinute   Int?
+  penalty     String    @default("DELETE")
+  muteMinutes Int       @default(60)
+  updatedAt   DateTime  @updatedAt
+  chat        GuardChat @relation(fields: [chatId], references: [id])
+
+  @@id([chatId, rule])
 }
 
 model ChatAdmin {

@@ -2,7 +2,8 @@ import { db } from "@/lib/db";
 import { GuardError, hasAdminRights } from "./access";
 import { handlePrivateMessage } from "./commands";
 import type { Update } from "./input";
-import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation } from "./protocol";
+import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation, minutesInZone, withinWindow } from "./protocol";
+import type { RuleKey } from "./protocol";
 import { withChatLock } from "./store";
 import { getMember, telegram, TelegramError } from "./telegram";
 import { handleVote } from "./votes";
@@ -54,18 +55,39 @@ async function handleMembership(change: NonNullable<Update["chat_member"]>) {
 
 type GuardChatRow = Awaited<ReturnType<typeof db.guardChat.findMany>>[number];
 
-// هر حذف خودکار اول در سوابق ثبت می‌شود، بعد انجام، بعد نتیجه‌اش نوشته می‌شود.
-// ردیف تکراری یعنی همین پیام قبلاً رسیدگی شده، پس دوباره حذف نمی‌شود.
-async function recordAndDelete(
+type Penalty = { penalty: string; muteMinutes: number };
+
+// وقتی همه‌ی مجوزها false باشند تلگرام کاربر را تا until_date ساکت می‌کند.
+const MUTED = {
+  can_send_messages: false, can_send_audios: false, can_send_documents: false,
+  can_send_photos: false, can_send_videos: false, can_send_video_notes: false,
+  can_send_voice_notes: false, can_send_polls: false, can_send_other_messages: false,
+  can_add_web_page_previews: false,
+};
+
+// هر اقدام خودکار اول در سوابق ثبت می‌شود، بعد انجام، بعد نتیجه‌اش نوشته می‌شود.
+// ردیف تکراری یعنی همین پیام قبلاً رسیدگی شده، پس دوباره اقدام نمی‌شود.
+// مجازات SILENCE پیام را هم حذف می‌کند: گذاشتن تبلیغ سر جایش و ساکت‌کردن فرستنده بی‌معنی است.
+async function enforce(
   message: NonNullable<Update["message"]>,
-  chat: GuardChatRow,
+  target: { chat: GuardChatRow; rule?: Penalty },
   entry: { key: string; actor: string; action: string; reason: string; targetId: string | null; note?: string },
 ) {
   const requestId = `${entry.key}:${message.chat.id}:${message.message_id}`;
   const base = `${message.chat.id}/${message.message_id}${entry.note ? ` (${entry.note})` : ""}`;
+  const minutes = target.rule?.muteMinutes ?? 60;
+  const silence = target.rule?.penalty === "SILENCE" && entry.targetId !== null;
   try {
     await db.guardEvent.create({
-      data: { requestId, chatId: chat.id, actorId: entry.actor, targetId: entry.targetId, action: entry.action, reason: entry.reason, detail: base },
+      data: {
+        requestId,
+        chatId: target.chat.id,
+        actorId: entry.actor,
+        targetId: entry.targetId,
+        action: entry.action,
+        reason: silence ? `${entry.reason} و سکوت ${minutes} دقیقه‌ای` : entry.reason,
+        detail: base,
+      },
     });
   } catch (error) {
     if (uniqueConflict(error)) return;
@@ -79,6 +101,22 @@ async function recordAndDelete(
     status = error.uncertain ? "UNKNOWN" : "FAILED";
     detail += `: ${error.message}`;
   }
+  if (silence) {
+    try {
+      await telegram("restrictChatMember", {
+        chat_id: message.chat.id,
+        user_id: entry.targetId,
+        permissions: MUTED,
+        until_date: Math.floor(Date.now() / 1000) + minutes * 60,
+      });
+      detail += ` · سکوت ${minutes} دقیقه`;
+    } catch (error) {
+      // حذف پیام انجام شده؛ شکستِ سکوت نباید آن را ناموفق نشان دهد، ولی باید دیده شود.
+      if (!(error instanceof TelegramError)) throw error;
+      if (status === "SUCCEEDED") status = error.uncertain ? "UNKNOWN" : "FAILED";
+      detail += ` · سکوت ناموفق: ${error.message}`;
+    }
+  }
   await db.guardEvent.update({ where: { requestId }, data: { status, detail } });
 }
 
@@ -89,13 +127,26 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   const chats = await db.guardChat.findMany({
     where: { active: true, OR: [{ id: message.chat.id }, { discussionChatId: message.chat.id }] },
     orderBy: { id: "asc" },
+    include: { rules: true },
   });
   if (chats.length === 0) return;
 
+  // یک قاعده وقتی برخورد می‌کند که روشن باشد و ساعتِ محلیِ همان گروه داخل پنجره‌اش باشد.
+  const at = new Date();
+  const matchRule = (key: RuleKey) => {
+    for (const chat of chats) {
+      const rule = chat.rules.find(row => row.rule === key);
+      if (!rule?.enabled) continue;
+      if (!withinWindow(minutesInZone(at, chat.timezone), rule.startMinute, rule.endMinute)) continue;
+      return { chat, rule };
+    }
+    return undefined;
+  };
+
   if (isServiceJoinLeave(message)) {
-    const chat = chats.find(rule => rule.deleteJoinMessages);
-    if (chat) {
-      await recordAndDelete(message, chat, {
+    const match = matchRule("join_messages");
+    if (match) {
+      await enforce(message, match, {
         key: "service-msg",
         actor: "system:service-cleanup",
         action: "SERVICE_MESSAGE_DELETE",
@@ -115,9 +166,9 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   const isAdmin = () => (adminCheck ??= getMember(message.chat.id, user.id).then(hasAdminRights));
 
   if (isSlashCommand(message.text)) {
-    const chat = chats.find(rule => rule.lockCommands);
-    if (chat && !(chat.adminsExempt && await isAdmin())) {
-      await recordAndDelete(message, chat, {
+    const match = matchRule("commands");
+    if (match && !(match.chat.adminsExempt && await isAdmin())) {
+      await enforce(message, match, {
         key: "cmd-lock",
         actor: "system:command-lock",
         action: "COMMAND_DELETE",
@@ -129,9 +180,9 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   }
 
   if (hasLinkOrMention(message)) {
-    const chat = chats.find(rule => rule.lockLinks);
-    if (chat && !(chat.adminsExempt && await isAdmin())) {
-      await recordAndDelete(message, chat, {
+    const match = matchRule("links");
+    if (match && !(match.chat.adminsExempt && await isAdmin())) {
+      await enforce(message, match, {
         key: "link-lock",
         actor: "system:link-lock",
         action: "LINK_DELETE",
@@ -143,9 +194,9 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   }
 
   if (hasHashtag(message)) {
-    const chat = chats.find(rule => rule.lockHashtags);
-    if (chat && !(chat.adminsExempt && await isAdmin())) {
-      await recordAndDelete(message, chat, {
+    const match = matchRule("hashtags");
+    if (match && !(match.chat.adminsExempt && await isAdmin())) {
+      await enforce(message, match, {
         key: "hashtag-lock",
         actor: "system:hashtag-lock",
         action: "HASHTAG_DELETE",
@@ -157,10 +208,10 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   }
 
   if (isMediaMessage(message)) {
-    const chat = chats.find(rule => rule.lockMedia);
-    if (chat && !(chat.adminsExempt && await isAdmin())) {
+    const match = matchRule("media");
+    if (match && !(match.chat.adminsExempt && await isAdmin())) {
       const mediaType = detectMediaType(message) ?? "media";
-      await recordAndDelete(message, chat, {
+      await enforce(message, match, {
         key: "media-lock",
         actor: "system:media-lock",
         action: "MEDIA_DELETE",
@@ -173,10 +224,10 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   }
 
   if (isForwardedMessage(message)) {
-    const chat = chats.find(rule => rule.lockForwards);
-    if (chat && !(chat.adminsExempt && await isAdmin())) {
+    const match = matchRule("forwards");
+    if (match && !(match.chat.adminsExempt && await isAdmin())) {
       const originType = detectForwardOrigin(message) ?? "forward";
-      await recordAndDelete(message, chat, {
+      await enforce(message, match, {
         key: "fwd-lock",
         actor: "system:forward-lock",
         action: "FORWARD_DELETE",
@@ -189,13 +240,13 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
   }
 
   if (hasEmoji(message)) {
-    const chat = chats.find(rule => rule.lockEmoji || rule.lockEmptyEmoji);
-    if (chat && (chat.lockEmoji || isEmojiOnly(message)) && !(chat.adminsExempt && await isAdmin())) {
-      await recordAndDelete(message, chat, {
+    const match = matchRule("emoji") ?? matchRule("empty_emoji");
+    if (match && (match.rule.rule === "emoji" || isEmojiOnly(message)) && !(match.chat.adminsExempt && await isAdmin())) {
+      await enforce(message, match, {
         key: "emoji-lock",
         actor: "system:emoji-lock",
         action: "EMOJI_DELETE",
-        reason: chat.lockEmoji
+        reason: match.rule.rule === "emoji"
           ? "حذف پیام حاوی ایموجی کاربر عادی طبق تنظیم قفل ایموجی"
           : "حذف پیام صرفاً ایموجی (بدون متن) کاربر عادی طبق تنظیم قفل ایموجی خالی",
         targetId: user.id,
@@ -204,17 +255,17 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
     }
   }
 
-  const lengthChat = chats.find(rule => rule.minWords > 0 || rule.maxWords > 0);
-  if (lengthChat) {
-    const breach = wordCountViolation(message, lengthChat.minWords, lengthChat.maxWords);
-    if (breach && !(lengthChat.adminsExempt && await isAdmin())) {
-      await recordAndDelete(message, lengthChat, {
+  const lengthMatch = matchRule("word_limit");
+  if (lengthMatch) {
+    const breach = wordCountViolation(message, lengthMatch.chat.minWords, lengthMatch.chat.maxWords);
+    if (breach && !(lengthMatch.chat.adminsExempt && await isAdmin())) {
+      await enforce(message, lengthMatch, {
         key: "words-lock",
         actor: "system:word-limit",
         action: "WORD_LIMIT_DELETE",
         reason: breach === "short"
-          ? `حذف پیام کوتاه‌تر از حداقل ${lengthChat.minWords} کلمه`
-          : `حذف پیام بلندتر از حداکثر ${lengthChat.maxWords} کلمه`,
+          ? `حذف پیام کوتاه‌تر از حداقل ${lengthMatch.chat.minWords} کلمه`
+          : `حذف پیام بلندتر از حداکثر ${lengthMatch.chat.maxWords} کلمه`,
         targetId: user.id,
         note: breach,
       });
@@ -242,7 +293,7 @@ async function handleComment(
   }
   if (!chat) return;
   if (chat.adminsExempt && await isAdmin()) return;
-  await recordAndDelete(message, chat, {
+  await enforce(message, { chat }, {
     key: "comment",
     actor: "system:comment-gate",
     action: "COMMENT_DELETE",

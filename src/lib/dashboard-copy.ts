@@ -67,14 +67,26 @@ const copy = {
   wait: ["زمان انتظار پس از عضویت", "Waiting period after joining"],
   hours: ["ساعت", "hours"],
   commentGate: ["زمان انتظار دیدگاه‌ها در گروه مرتبط", "Comment waiting period in linked group"],
-  deleteJoinMessages: ["حذف پیام‌های ورود و خروج", "Delete join/leave service messages"],
-  lockCommands: ["قفل دستورات اسلش", "Lock slash commands"],
-  lockLinks: ["قفل لینک و آیدی", "Lock links and mentions"],
-  lockMedia: ["قفل مدیا (رسانه)", "Lock media"],
-  lockForwards: ["قفل فوروارد", "Lock forwarded messages"],
-  lockEmoji: ["قفل ایموجی", "Lock emojis"],
-  lockEmptyEmoji: ["قفل پیام فقط ایموجی", "Lock emoji-only messages"],
-  lockHashtags: ["قفل هشتگ", "Lock hashtags"],
+  ruleTable: ["قواعد گروه", "Group rules"],
+  ruleTableHelp: ["هر قاعده ساعت اجرای خودش را دارد. خالی گذاشتن ساعت یعنی تمام شبانه‌روز. ساعت‌ها به وقت منطقهٔ زمانی همین گروه‌اند.", "Each rule has its own hours. Leaving the times empty means all day. Times follow this group's own timezone."],
+  windowFrom: ["از ساعت", "From"],
+  windowTo: ["تا ساعت", "To"],
+  penalty: ["مجازات", "Penalty"],
+  penaltyDelete: ["حذف پیام", "Delete the message"],
+  penaltySilence: ["حذف و سکوت موقت", "Delete and mute"],
+  muteMinutes: ["دقیقهٔ سکوت", "Mute minutes"],
+  timezoneLabel: ["منطقهٔ زمانی گروه", "Group timezone"],
+  timezoneHelp: ["نام IANA، مثل Asia/Tehran. ساعت اجرای قاعده‌ها بر همین مبنا حساب می‌شود.", "An IANA name such as Asia/Tehran. Rule hours are measured against it."],
+  allHours: ["تمام ساعات", "All hours"],
+  rule_join_messages: ["حذف پیام‌های ورود و خروج", "Delete join and leave messages"],
+  rule_commands: ["قفل دستورات اسلش", "Lock slash commands"],
+  rule_links: ["قفل لینک و آیدی", "Lock links and mentions"],
+  rule_hashtags: ["قفل هشتگ", "Lock hashtags"],
+  rule_media: ["قفل رسانه", "Lock media"],
+  rule_forwards: ["قفل فوروارد", "Lock forwards"],
+  rule_emoji: ["قفل ایموجی", "Lock emojis"],
+  rule_empty_emoji: ["قفل پیام فقط ایموجی", "Lock emoji-only messages"],
+  rule_word_limit: ["محدودیت تعداد کلمات", "Word limit"],
   adminsExempt: ["معافیت مدیران از قفل‌ها", "Admins exempt from locks"],
   wordLimits: ["محدودیت تعداد کلمات", "Message word limits"],
   noLimit: ["بدون محدودیت", "no limit"],
@@ -136,14 +148,6 @@ const copy = {
   waitRange: ["بین ۰ تا ۱۶۸ ساعت", "Between 0 and 168 hours"],
   verifyBeforeVote: ["تأیید حساب با ربات پیش از رأی دادن", "Require bot verification before voting"],
   gateComments: ["اعمال زمان انتظار پس از عضویت برای دیدگاه‌ها", "Apply the post-join waiting period to comments"],
-  deleteJoinMessagesLabel: ["حذف خودکار پیام‌های ورود و خروج در گروه", "Automatically delete join and leave messages in the group"],
-  lockCommandsLabel: ["حذف دستورات اسلش کاربران عادی در گروه", "Delete slash commands from non-admin members in the group"],
-  lockLinksLabel: ["حذف پیام‌های حاوی لینک یا آیدی در گروه", "Delete messages containing links or mentions in the group"],
-  lockMediaLabel: ["حذف پیام‌های رسانه‌ای (تصویر، ویدیو، استیکر، گیف، ویس، فایل) در گروه", "Delete media messages (photo, video, sticker, gif, voice, files) in the group"],
-  lockForwardsLabel: ["حذف پیام‌های فوروارد شده (از کانال‌ها، کاربران، یا چت‌های دیگر) در گروه", "Delete forwarded messages (from channels, users, or other chats) in the group"],
-  lockEmojiLabel: ["حذف پیام‌های حاوی هرگونه ایموجی در گروه", "Delete messages containing any emoji in the group"],
-  lockEmptyEmojiLabel: ["حذف پیام‌هایی که فقط از ایموجی تشکیل شده‌اند (بدون متن) در گروه", "Delete messages containing only emojis without text in the group"],
-  lockHashtagsLabel: ["حذف پیام‌های حاوی هشتگ در گروه", "Delete messages containing hashtags in the group"],
   adminsExemptLabel: ["مدیران گروه از همهٔ قفل‌ها معاف باشند", "Group admins are exempt from every lock"],
   minWordsLabel: ["حداقل تعداد کلمات پیام", "Minimum words per message"],
   maxWordsLabel: ["حداکثر تعداد کلمات پیام", "Maximum words per message"],
@@ -186,6 +190,11 @@ export type DashboardCopy = { [Key in keyof typeof copy]: string };
 
 export function dashboardCopy(locale: Locale): DashboardCopy {
   return Object.fromEntries(Object.entries(copy).map(([key, values]) => [key, values[locale === "fa" ? 0 : 1]])) as DashboardCopy;
+}
+
+export function ruleLabel(locale: Locale, rule: string): string {
+  const c = dashboardCopy(locale) as unknown as Record<string, string>;
+  return c[`rule_${rule}`] ?? rule;
 }
 
 export function statusLabel(locale: Locale, status: string): string {

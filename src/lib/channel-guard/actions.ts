@@ -15,7 +15,8 @@ export type PostPhoto = { blob: Blob; filename: string };
 const TEXT_LIMIT = 4096;
 const CAPTION_LIMIT = 1024;
 type ModerationInput = { chatId: string; targetId: string; action: "ban" | "unban"; reason: string; requestId: string };
-type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; deleteJoinMessages?: boolean; lockCommands?: boolean; lockLinks?: boolean; lockMedia?: boolean; lockForwards?: boolean; lockEmoji?: boolean; lockEmptyEmoji?: boolean; discussionChatId: string | null };
+type RuleInput = { rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null; penalty: string; muteMinutes: number };
+type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; adminsExempt?: boolean; minWords?: number; maxWords?: number; timezone?: string; rules?: RuleInput[]; discussionChatId: string | null };
 type AttachInput = { chatId: string; postId: string; messageId: number };
 const banWarning = "درخواست بدون حذف پیام‌ها ارسال شد؛ تلگرام ممکن است طبق قواعد خود پیام‌ها را حذف کند و عدم حذف قابل تضمین نیست.";
 const databaseMessage = "ثبت یا خواندن اطلاعات ممکن نشد. نتیجه را در سوابق بررسی کنید؛ عملیات را کورکورانه تکرار نکنید.";
@@ -217,15 +218,28 @@ export async function saveSettings(input: SettingsInput, actorId: string) {
       active(linked.chat);
       if (linked.chat.type !== "supergroup") throw new GuardError("گروه گفتگو باید سوپرگروه باشد.");
       deletion(linked.bot);
-    } else if (input.commentGate || input.deleteJoinMessages || input.lockCommands || input.lockLinks || input.lockMedia || input.lockForwards || input.lockEmoji || input.lockEmptyEmoji) {
+    } else if (input.commentGate || (input.rules ?? []).some(rule => rule.enabled)) {
       if (chat.type !== "supergroup" && chat.type !== "group") throw new GuardError("برای این تنظیمات، گروه را مشخص کنید.");
       deletion(bot);
     }
     return withChatLock(input.chatId, async tx => {
       const chatId = input.chatId;
-      const settings = { waitHours: input.waitHours, verification: input.verification, commentGate: input.commentGate, deleteJoinMessages: input.deleteJoinMessages ?? false, lockCommands: input.lockCommands ?? false, lockLinks: input.lockLinks ?? false, lockMedia: input.lockMedia ?? false, lockForwards: input.lockForwards ?? false, lockEmoji: input.lockEmoji ?? false, lockEmptyEmoji: input.lockEmptyEmoji ?? false, discussionChatId: input.discussionChatId };
+      const settings = {
+        waitHours: input.waitHours, verification: input.verification, commentGate: input.commentGate,
+        adminsExempt: input.adminsExempt ?? true, minWords: input.minWords ?? 0, maxWords: input.maxWords ?? 0,
+        timezone: input.timezone ?? "UTC", discussionChatId: input.discussionChatId,
+      };
       const updated = await tx.guardChat.update({ where: { id: chatId }, data: settings });
-      await tx.guardEvent.create({ data: { requestId: `settings:${randomUUID()}`, chatId, actorId, action: "settings", reason: "تغییر تنظیمات با درخواست صریح مدیر", detail: JSON.stringify(settings), status: "SUCCEEDED" } });
+      // هر قاعده upsert می‌شود تا خاموش‌کردن یکی، پنجره و مجازاتش را پاک نکند.
+      for (const rule of input.rules ?? []) {
+        const row = { enabled: rule.enabled, startMinute: rule.startMinute, endMinute: rule.endMinute, penalty: rule.penalty, muteMinutes: rule.muteMinutes };
+        await tx.guardChatRule.upsert({
+          where: { chatId_rule: { chatId, rule: rule.rule } },
+          create: { chatId, rule: rule.rule, ...row },
+          update: row,
+        });
+      }
+      await tx.guardEvent.create({ data: { requestId: `settings:${randomUUID()}`, chatId, actorId, action: "settings", reason: "تغییر تنظیمات با درخواست صریح مدیر", detail: JSON.stringify({ ...settings, rules: input.rules ?? [] }), status: "SUCCEEDED" } });
       return updated;
     });
   });

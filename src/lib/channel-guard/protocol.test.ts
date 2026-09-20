@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
+import { checkVote, parseCallback, voteKeyboard, detectBrigade, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, wordCountViolation, withinWindow, minutesInZone, detectMediaType, isMediaMessage, detectForwardOrigin, isForwardedMessage, hasEmoji, isEmojiOnly } from "./protocol";
 
 const now = new Date("2026-09-18T12:00:00Z");
 const member = { banned: false, verified: true, present: true, joinedAt: null as Date | null };
@@ -88,6 +88,46 @@ describe("link and mention detection", () => {
   });
   it("does not treat a hashtag as a link, which is why the hashtag lock exists", () => {
     expect(hasLinkOrMention({ text: "#تخفیف_ویژه" })).toBe(false);
+  });
+});
+
+describe("rule windows", () => {
+  it("runs at all hours when either edge is missing", () => {
+    expect(withinWindow(600, null, null)).toBe(true);
+    expect(withinWindow(600, 480, null)).toBe(true);
+    expect(withinWindow(600, null, 480)).toBe(true);
+  });
+  it("treats an equal start and end as no window, not a zero-length one", () => {
+    expect(withinWindow(600, 480, 480)).toBe(true);
+  });
+  it("applies a daytime window", () => {
+    expect(withinWindow(600, 480, 1020)).toBe(true);
+    expect(withinWindow(400, 480, 1020)).toBe(false);
+    expect(withinWindow(1100, 480, 1020)).toBe(false);
+  });
+  it("includes the start and excludes the end", () => {
+    expect(withinWindow(480, 480, 1020)).toBe(true);
+    expect(withinWindow(1020, 480, 1020)).toBe(false);
+  });
+  it("applies a window that crosses midnight", () => {
+    expect(withinWindow(1350, 1320, 360)).toBe(true);
+    expect(withinWindow(60, 1320, 360)).toBe(true);
+    expect(withinWindow(720, 1320, 360)).toBe(false);
+  });
+});
+
+describe("local time of a chat", () => {
+  const at = new Date("2026-09-20T12:00:00Z");
+  it("reads the hour in the chat's own zone, not the server's", () => {
+    expect(minutesInZone(at, "UTC")).toBe(12 * 60);
+    expect(minutesInZone(at, "Asia/Tehran")).toBe(15 * 60 + 30);
+  });
+  it("falls back to UTC rather than throwing on a broken zone", () => {
+    expect(minutesInZone(at, "Not/AZone")).toBe(12 * 60);
+    expect(minutesInZone(at, "")).toBe(12 * 60);
+  });
+  it("reports midnight as zero, not 1440", () => {
+    expect(minutesInZone(new Date("2026-09-20T00:00:00Z"), "UTC")).toBe(0);
   });
 });
 

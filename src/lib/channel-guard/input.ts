@@ -1,3 +1,4 @@
+import { RULE_KEYS } from "./protocol";
 import { z } from "zod";
 
 const id = z.union([z.number().int().safe(), z.string().regex(/^-?[0-9]+$/)]).transform(String);
@@ -52,7 +53,25 @@ export const adminInput = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("connect"), chatId: z.string().regex(/^(?:-\d{1,20}|@[a-zA-Z0-9_]{5,32})$/) }),
   z.object({ operation: z.literal("publish"), chatId, text: z.string().trim().min(1).max(8192), requestId }),
   z.object({ operation: z.literal("moderate"), chatId, targetId: z.string().regex(/^[1-9]\d{0,19}$/), action: z.enum(["ban", "unban"]), reason: z.string().trim().min(3).max(500), requestId }),
-  z.object({ operation: z.literal("settings"), chatId, waitHours: z.number().int().min(0).max(168), verification: z.boolean(), commentGate: z.boolean(), deleteJoinMessages: z.boolean().default(false), lockCommands: z.boolean().default(false), lockLinks: z.boolean().default(false), lockMedia: z.boolean().default(false), lockForwards: z.boolean().default(false), lockEmoji: z.boolean().default(false), lockEmptyEmoji: z.boolean().default(false), lockHashtags: z.boolean().default(false), adminsExempt: z.boolean().default(true), minWords: z.number().int().min(0).max(4096).default(0), maxWords: z.number().int().min(0).max(4096).default(0), discussionChatId: chatId.nullable() }),
+  z.object({
+    operation: z.literal("settings"), chatId,
+    waitHours: z.number().int().min(0).max(168),
+    verification: z.boolean(),
+    commentGate: z.boolean(),
+    adminsExempt: z.boolean().default(true),
+    minWords: z.number().int().min(0).max(4096).default(0),
+    maxWords: z.number().int().min(0).max(4096).default(0),
+    timezone: z.string().trim().min(1).max(64).default("UTC"),
+    rules: z.array(z.object({
+      rule: z.enum(RULE_KEYS),
+      enabled: z.boolean(),
+      startMinute: z.number().int().min(0).max(1439).nullable().default(null),
+      endMinute: z.number().int().min(0).max(1439).nullable().default(null),
+      penalty: z.enum(["DELETE", "SILENCE"]).default("DELETE"),
+      muteMinutes: z.number().int().min(1).max(10080).default(60),
+    })).max(RULE_KEYS.length).default([]),
+    discussionChatId: chatId.nullable(),
+  }),
   z.object({ operation: z.literal("review"), chatId, alertId: z.string().min(1).max(64) }),
   z.object({ operation: z.literal("sync"), chatId, postId: z.string().min(1).max(64) }),
   z.object({ operation: z.literal("attach"), chatId, postId: z.string().min(1).max(64), messageId: z.number().int().min(1).max(2147483647) }),

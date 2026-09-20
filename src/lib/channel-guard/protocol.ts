@@ -84,6 +84,32 @@ export function hasHashtag(message: {
   return /#[\p{L}\p{N}_]+/u.test(combined);
 }
 
+export const RULE_KEYS = ["join_messages", "commands", "links", "hashtags", "media", "forwards", "emoji", "empty_emoji", "word_limit"] as const;
+export type RuleKey = (typeof RULE_KEYS)[number];
+
+// ساعت محلیِ خودِ گروه، نه ساعت سرور. منطقه‌ی زمانی نامعتبر به UTC برمی‌گردد
+// تا یک رشته‌ی خراب در دیتابیس کل مسیر پیام را نیندازد.
+export function minutesInZone(at: Date, timezone: string): number {
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(at);
+  } catch {
+    parts = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(at);
+  }
+  const hour = Number(parts.find(p => p.type === "hour")?.value ?? 0) % 24;
+  const minute = Number(parts.find(p => p.type === "minute")?.value ?? 0);
+  return hour * 60 + minute;
+}
+
+// پنجره‌ی اجرای یک قاعده. بدون پنجره یعنی تمام ساعات.
+// پنجره‌ای که از نیمه‌شب رد می‌شود (۲۲:۰۰ تا ۰۶:۰۰) هم باید کار کند،
+// و شروع برابر پایان یعنی پنجره‌ای تعریف نشده، نه پنجره‌ی صفر.
+export function withinWindow(nowMinutes: number, start: number | null, end: number | null): boolean {
+  if (start === null || end === null || start === end) return true;
+  if (start < end) return nowMinutes >= start && nowMinutes < end;
+  return nowMinutes >= start || nowMinutes < end;
+}
+
 // صفر یعنی محدودیت خاموش است. پیامی که اصلاً متن ندارد (استیکر، عکس بی‌کپشن) شمرده نمی‌شود،
 // وگرنه حداقلِ کلمات هر استیکری را حذف می‌کرد؛ آن کار قفل رسانه است، نه این.
 export function wordCountViolation(
