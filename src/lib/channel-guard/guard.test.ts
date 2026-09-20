@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
-  db: { guardUpdate: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() }, guardChat: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() }, guardUser: { upsert: vi.fn() }, guardPost: { findUnique: vi.fn() }, guardMember: { findUnique: vi.fn() }, guardEvent: { create: vi.fn(), update: vi.fn() }, guardMessageLog: { create: vi.fn(), count: vi.fn(), deleteMany: vi.fn() } },
+  db: { guardUpdate: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() }, guardChat: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() }, guardUser: { upsert: vi.fn() }, guardPost: { findUnique: vi.fn() }, guardMember: { findUnique: vi.fn() }, guardEvent: { create: vi.fn(), update: vi.fn() }, guardMessageLog: { create: vi.fn(), count: vi.fn(), deleteMany: vi.fn() }, guardChatText: { findUnique: vi.fn() }, $transaction: vi.fn() },
   telegram: vi.fn(), getMember: vi.fn(), moderateMember: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: mocks.db }));
@@ -8,7 +8,14 @@ vi.mock("./telegram", () => ({ telegram: mocks.telegram, getMember: mocks.getMem
 vi.mock("./actions", () => ({ moderateMember: mocks.moderateMember }));
 import { handleUpdate } from "./guard";
 
-beforeEach(() => { vi.resetAllMocks(); mocks.db.guardUpdate.create.mockResolvedValue({}); mocks.db.guardUpdate.update.mockResolvedValue({}); mocks.db.guardChat.findMany.mockResolvedValue([]); mocks.telegram.mockResolvedValue(true); mocks.db.guardMessageLog.count.mockResolvedValue(0); });
+beforeEach(() => { vi.resetAllMocks(); mocks.db.guardUpdate.create.mockResolvedValue({}); mocks.db.guardUpdate.update.mockResolvedValue({}); mocks.db.guardChat.findMany.mockResolvedValue([]); mocks.telegram.mockResolvedValue(true); mocks.db.guardMessageLog.count.mockResolvedValue(0); mocks.db.guardChatText.findUnique.mockResolvedValue(null);
+  // withChatLock فقط یک تراکنش با قفل مشورتی است؛ اینجا خودِ کار را اجرا می‌کنیم.
+  mocks.db.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => work({
+    $executeRaw: vi.fn(),
+    guardUser: { upsert: vi.fn() },
+    guardMember: { findUnique: mocks.db.guardMember.findUnique, upsert: vi.fn() },
+  }));
+});
 // ردیف GuardChat در دیتابیس هیچ‌وقت ستون کم ندارد، پس fixture هم نباید داشته باشد.
 // هر بار که این‌ها دستی نوشته شدند، افزودن یک ستون جدید تست‌ها را به‌دلیل اشتباه شکست.
 const chatRow = ({ rules = [], ...overrides }: Record<string, unknown> & { rules?: Record<string, unknown>[] }) => ({
@@ -19,6 +26,7 @@ const chatRow = ({ rules = [], ...overrides }: Record<string, unknown> & { rules
   minWords: 0,
   maxWords: 0,
   timezone: "UTC",
+  silentBotMessages: true,
   ...overrides,
   rules: rules.map(rule => ({ enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 0, limitWindowMinutes: 0, ...rule })),
 });
@@ -235,6 +243,60 @@ describe("webhook behavior", () => {
       message: { message_id: 43, chat: { id: "-200", type: "supergroup" }, from: { id: "9", first_name: "عضو عادی" }, text: "https://t.me/x" },
     });
     expect(mocks.telegram).not.toHaveBeenCalledWith("restrictChatMember", expect.anything());
+  });
+  it("answers /rules before the command lock could delete it", async () => {
+    const group = chatRow({ id: "-200", rules: [{ rule: "commands" }] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.db.guardChatText.findUnique.mockResolvedValue({ body: "قانون یک" });
+    mocks.getMember.mockResolvedValue({ status: "member" });
+    await handleUpdate({
+      update_id: 60,
+      message: { message_id: 60, chat: { id: "-200", type: "supergroup", title: "گروه" }, from: { id: "11", first_name: "عضو" }, text: "/rules" },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("sendMessage", expect.objectContaining({ chat_id: "-200", text: "قانون یک" }));
+    expect(mocks.telegram).not.toHaveBeenCalledWith("deleteMessage", expect.anything());
+  });
+  it("stays quiet when the rules text was never written", async () => {
+    const group = chatRow({ id: "-200", rules: [] });
+    mocks.db.guardChat.findMany.mockResolvedValue([group]);
+    mocks.db.guardChatText.findUnique.mockResolvedValue(null);
+    await handleUpdate({
+      update_id: 61,
+      message: { message_id: 61, chat: { id: "-200", type: "supergroup" }, from: { id: "11", first_name: "عضو" }, text: "/rules" },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("sendMessage", expect.anything());
+  });
+  it("sends the welcome text when a join is actually observed", async () => {
+    mocks.db.guardChat.findUnique.mockResolvedValue(chatRow({ id: "-200" }));
+    mocks.db.guardChatText.findUnique.mockResolvedValue({ body: "سلام {user}" });
+    mocks.db.guardMember.findUnique.mockResolvedValue(null);
+    await handleUpdate({
+      update_id: 62,
+      chat_member: {
+        chat: { id: "-200", type: "supergroup", title: "گروه" },
+        date: 1_790_000_000,
+        from: { id: "12", first_name: "نوید" },
+        old_chat_member: { status: "left", user: { id: "12", first_name: "نوید" } },
+        new_chat_member: { status: "member", user: { id: "12", first_name: "نوید" } },
+      },
+    });
+    expect(mocks.telegram).toHaveBeenCalledWith("sendMessage", expect.objectContaining({ text: "سلام نوید", disable_notification: true }));
+  });
+  it("does not welcome someone who was only promoted", async () => {
+    mocks.db.guardChat.findUnique.mockResolvedValue(chatRow({ id: "-200" }));
+    mocks.db.guardChatText.findUnique.mockResolvedValue({ body: "سلام {user}" });
+    mocks.db.guardMember.findUnique.mockResolvedValue(null);
+    await handleUpdate({
+      update_id: 63,
+      chat_member: {
+        chat: { id: "-200", type: "supergroup", title: "گروه" },
+        date: 1_790_000_000,
+        from: { id: "12", first_name: "نوید" },
+        old_chat_member: { status: "member", user: { id: "12", first_name: "نوید" } },
+        new_chat_member: { status: "administrator", user: { id: "12", first_name: "نوید" } },
+      },
+    });
+    expect(mocks.telegram).not.toHaveBeenCalledWith("sendMessage", expect.anything());
   });
   it("writes nothing to the counter table when no counting rule is on", async () => {
     const group = chatRow({ id: "-200", rules: [{ rule: "links" }] });

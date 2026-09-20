@@ -98,7 +98,7 @@ export function parse(markup: string): Node[] {
 }
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-function escape(value: string): string {
+export function escape(value: string): string {
   return value.replace(/[&<>"]/g, (character) => ESCAPES[character]);
 }
 
@@ -128,4 +128,24 @@ export function render(markup: string): { html: string; length: number } {
   // Counting code points instead would let a post full of emoji pass here and
   // be refused there: every emoji outside the BMP is two units, not one.
   return { html: toHtml(nodes), length: plainText(nodes).length };
+}
+
+/**
+ * A template an admin wrote, with {placeholders} filled in.
+ *
+ * The markup is rendered first and the placeholders are filled afterwards, so a
+ * member whose display name contains `*` or `<b>` cannot turn it into markup or
+ * into a tag: their value is escaped and dropped into finished HTML. Every
+ * placeholder is replaced in one pass, so a value that itself looks like a
+ * placeholder is not rewritten by the next one. An unknown {word} is left as
+ * the admin typed it rather than silently vanishing.
+ */
+export function fillTemplate(markup: string, values: Record<string, string>): { html: string; length: number } {
+  const nodes = parse(markup);
+  const fill = (text: string, escaped: boolean) =>
+    text.replace(/\{([a-z_]{1,24})\}/g, (whole, key: string) =>
+      key in values ? (escaped ? escape(values[key]) : values[key]) : whole);
+  // Same UTF-16 count as render(), measured after filling: a name is part of
+  // what Telegram weighs against the 4096.
+  return { html: fill(toHtml(nodes), true), length: fill(plainText(nodes), false).length };
 }

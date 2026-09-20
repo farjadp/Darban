@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parse, plainText, render, safeUrl, toHtml } from "./markup";
+import { fillTemplate, parse, plainText, render, safeUrl, toHtml } from "./markup";
 
 const html = (markup: string) => render(markup).html;
 
@@ -96,5 +96,33 @@ describe("Persian text", () => {
   it("formats right-to-left text without disturbing it", () => {
     expect(html("*سلام* دنیا")).toBe("<b>سلام</b> دنیا");
     expect(toHtml(parse("> نقل‌قول"))).toBe("<blockquote>نقل‌قول</blockquote>");
+  });
+});
+
+describe("filling an admin's template", () => {
+  it("fills the placeholders it knows", () => {
+    expect(fillTemplate("سلام {user}، به {group} خوش آمدی.", { user: "سارا", group: "گروه ما" }).html)
+      .toBe("سلام سارا، به گروه ما خوش آمدی.");
+  });
+  it("leaves an unknown placeholder as the admin typed it", () => {
+    expect(fillTemplate("{user} و {nobody}", { user: "سارا" }).html).toBe("سارا و {nobody}");
+  });
+  it("keeps the admin's own markup", () => {
+    expect(fillTemplate("*{user}* عزیز", { user: "سارا" }).html).toBe("<b>سارا</b> عزیز");
+  });
+  it("cannot be turned into a tag by a member's display name", () => {
+    const html = fillTemplate("سلام {user}", { user: "<b>هک</b>" }).html;
+    expect(html).toBe("سلام &lt;b&gt;هک&lt;/b&gt;");
+    expect(html).not.toContain("<b>");
+  });
+  it("cannot be turned into markup by a member's display name", () => {
+    // نامی که ستاره دارد نباید بقیه‌ی پیام را پررنگ کند
+    expect(fillTemplate("{user} در {group}", { user: "*سارا", group: "گروه" }).html).toBe("*سارا در گروه");
+  });
+  it("does not let one value be rewritten by the next placeholder", () => {
+    expect(fillTemplate("{user}/{group}", { user: "{group}", group: "گروه" }).html).toBe("{group}/گروه");
+  });
+  it("counts the filled text, not the template", () => {
+    expect(fillTemplate("*{user}*", { user: "سارا" }).length).toBe(4);
   });
 });

@@ -18,6 +18,7 @@ model GuardChat {
   commentGate      Boolean       @default(false)
   adminsExempt     Boolean       @default(true)
   timezone         String        @default("UTC")
+  silentBotMessages Boolean      @default(true)
   minWords         Int           @default(0)
   maxWords         Int           @default(0)
   discussionChatId String?       @unique
@@ -28,6 +29,19 @@ model GuardChat {
   alerts           GuardAlert[]
   events           GuardEvent[]
   rules            GuardChatRule[]
+  texts            GuardChatText[]
+}
+
+// متن‌هایی که بات می‌فرستد، به قلم مدیر خودِ گروه.
+// ردیف نبودن یا خالی‌بودن یعنی بات ساکت می‌ماند — سوییچ دومی برای فراموش‌کردن وجود ندارد.
+model GuardChatText {
+  chatId    String
+  key       String
+  body      String
+  updatedAt DateTime  @updatedAt
+  chat      GuardChat @relation(fields: [chatId], references: [id])
+
+  @@id([chatId, key])
 }
 
 // یک ردیف به ازای هر قاعده‌ی هر چت. قبلاً هر قفل یک ستون بولی روی GuardChat بود،

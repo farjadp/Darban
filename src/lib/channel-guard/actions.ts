@@ -16,7 +16,8 @@ const TEXT_LIMIT = 4096;
 const CAPTION_LIMIT = 1024;
 type ModerationInput = { chatId: string; targetId: string; action: "ban" | "unban"; reason: string; requestId: string };
 type RuleInput = { rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null; penalty: string; muteMinutes: number; limitCount?: number; limitWindowMinutes?: number };
-type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; adminsExempt?: boolean; minWords?: number; maxWords?: number; timezone?: string; rules?: RuleInput[]; discussionChatId: string | null };
+type TextInput = { key: string; body: string };
+type SettingsInput = { chatId: string; waitHours: number; verification: boolean; commentGate: boolean; adminsExempt?: boolean; minWords?: number; maxWords?: number; timezone?: string; rules?: RuleInput[]; silentBotMessages?: boolean; texts?: TextInput[]; discussionChatId: string | null };
 type AttachInput = { chatId: string; postId: string; messageId: number };
 const banWarning = "درخواست بدون حذف پیام‌ها ارسال شد؛ تلگرام ممکن است طبق قواعد خود پیام‌ها را حذف کند و عدم حذف قابل تضمین نیست.";
 const databaseMessage = "ثبت یا خواندن اطلاعات ممکن نشد. نتیجه را در سوابق بررسی کنید؛ عملیات را کورکورانه تکرار نکنید.";
@@ -227,7 +228,8 @@ export async function saveSettings(input: SettingsInput, actorId: string) {
       const settings = {
         waitHours: input.waitHours, verification: input.verification, commentGate: input.commentGate,
         adminsExempt: input.adminsExempt ?? true, minWords: input.minWords ?? 0, maxWords: input.maxWords ?? 0,
-        timezone: input.timezone ?? "UTC", discussionChatId: input.discussionChatId,
+        timezone: input.timezone ?? "UTC", silentBotMessages: input.silentBotMessages ?? true,
+        discussionChatId: input.discussionChatId,
       };
       const updated = await tx.guardChat.update({ where: { id: chatId }, data: settings });
       // هر قاعده upsert می‌شود تا خاموش‌کردن یکی، پنجره و مجازاتش را پاک نکند.
@@ -238,6 +240,19 @@ export async function saveSettings(input: SettingsInput, actorId: string) {
           create: { chatId, rule: rule.rule, ...row },
           update: row,
         });
+      }
+      // متن خالی یعنی خاموش، پس ردیفش پاک می‌شود نه اینکه رشته‌ی خالی بماند.
+      for (const text of input.texts ?? []) {
+        const body = text.body.trim();
+        if (body) {
+          await tx.guardChatText.upsert({
+            where: { chatId_key: { chatId, key: text.key } },
+            create: { chatId, key: text.key, body },
+            update: { body },
+          });
+        } else {
+          await tx.guardChatText.deleteMany({ where: { chatId, key: text.key } });
+        }
       }
       await tx.guardEvent.create({ data: { requestId: `settings:${randomUUID()}`, chatId, actorId, action: "settings", reason: "تغییر تنظیمات با درخواست صریح مدیر", detail: JSON.stringify({ ...settings, rules: input.rules ?? [] }), status: "SUCCEEDED" } });
       return updated;

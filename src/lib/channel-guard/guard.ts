@@ -4,6 +4,7 @@ import { handlePrivateMessage } from "./commands";
 import type { Update } from "./input";
 import { checkVote, isPresent, observedJoin, isServiceJoinLeave, isSlashCommand, hasLinkOrMention, hasHashtag, isMediaMessage, detectMediaType, isForwardedMessage, detectForwardOrigin, hasEmoji, isEmojiOnly, wordCountViolation, minutesInZone, withinWindow, fingerprint } from "./protocol";
 import type { RuleKey } from "./protocol";
+import { fillTemplate } from "./markup";
 import { withChatLock } from "./store";
 import { getMember, telegram, TelegramError } from "./telegram";
 import { handleVote } from "./votes";
@@ -43,14 +44,35 @@ async function handleMembership(change: NonNullable<Update["chat_member"]>) {
   if (!chat?.active || change.new_chat_member.user.is_bot) return;
   const user = change.new_chat_member.user;
   const at = new Date(change.date * 1000);
-  await withChatLock(chat.id, async tx => {
+  const joined = await withChatLock(chat.id, async tx => {
     await tx.guardUser.upsert({ where: { id: user.id }, create: { id: user.id, name: user.first_name }, update: { name: user.first_name } });
     const previous = await tx.guardMember.findUnique({ where: { chatId_userId: { chatId: chat.id, userId: user.id } } });
-    if (previous?.membershipAt && previous.membershipAt >= at) return;
+    if (previous?.membershipAt && previous.membershipAt >= at) return false;
     const joined = observedJoin(change.old_chat_member.status, change.new_chat_member.status, !!change.old_chat_member.is_member, !!change.new_chat_member.is_member);
     const data = { membershipAt: at, present: isPresent(change.new_chat_member.status, change.new_chat_member.is_member), banned: change.new_chat_member.status === "kicked", ...(joined ? { joinedAt: at } : {}) };
     await tx.guardMember.upsert({ where: { chatId_userId: { chatId: chat.id, userId: user.id } }, create: { chatId: chat.id, userId: user.id, ...data }, update: data });
+    return joined;
   });
+  if (!joined) return;
+  await sendChatText(chat, "welcome", { user: user.first_name, group: change.chat.title ?? "" });
+}
+
+// متنی که مدیر گروه نوشته. نبودنش یا خالی‌بودنش یعنی چیزی فرستاده نمی‌شود.
+// شکستِ ارسال نباید ثبت عضویت را که قبلاً انجام شده خراب کند.
+async function sendChatText(
+  chat: { id: string; silentBotMessages: boolean },
+  key: string,
+  values: Record<string, string>,
+) {
+  const text = await db.guardChatText.findUnique({ where: { chatId_key: { chatId: chat.id, key } } });
+  const body = text?.body?.trim();
+  if (!body) return;
+  const { html } = fillTemplate(body, values);
+  try {
+    await telegram("sendMessage", { chat_id: chat.id, text: html, parse_mode: "HTML", disable_notification: chat.silentBotMessages });
+  } catch (error) {
+    if (!(error instanceof TelegramError)) throw error;
+  }
 }
 
 type GuardChatRow = Awaited<ReturnType<typeof db.guardChat.findMany>>[number];
@@ -159,6 +181,14 @@ async function handleGroupMessage(message: NonNullable<Update["message"]>) {
 
   const user = message.from;
   if (!user || user.is_bot) return;
+
+  // پیش از قفل اسلش‌کامند، وگرنه گروهی که آن قفل را روشن کرده هیچ‌وقت
+  // جواب /rules را نمی‌بیند: قفل پیام را قبل از رسیدن به اینجا حذف می‌کرد.
+  if (/^\/rules(@\S+)?\s*$/i.test((message.text ?? "").trim())) {
+    const host = chats.find(chat => chat.id === message.chat.id) ?? chats[0];
+    await sendChatText(host, "rules", { user: user.first_name, group: message.chat.title ?? "" });
+    return;
+  }
 
   // مدیران از همه‌ی قفل‌ها معاف‌اند. تلگرام فقط وقتی پرسیده می‌شود که قاعده‌ای واقعاً برخورد کند،
   // و جوابش برای بقیه‌ی قاعده‌های همین پیام نگه داشته می‌شود.

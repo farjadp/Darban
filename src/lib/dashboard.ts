@@ -3,8 +3,9 @@ export type View = (typeof views)[number];
 export type Chat = {
   id: string; title: string; type: string; username: string | null; active: boolean;
   waitHours: number; verification: boolean; commentGate: boolean; adminsExempt: boolean;
-  minWords: number; maxWords: number; timezone: string; discussionChatId: string | null;
+  minWords: number; maxWords: number; timezone: string; silentBotMessages: boolean; discussionChatId: string | null;
   rules: RuleSetting[];
+  texts: { key: string; body: string }[];
 };
 export type RuleSetting = {
   rule: string; enabled: boolean; startMinute: number | null; endMinute: number | null;
@@ -45,9 +46,9 @@ export function candidateIds(value: unknown): string[] {
 export async function loadDashboard(adminId: string, requestedChat?: string): Promise<DashboardData> {
   const { db } = await import("@/lib/db");
   const scope = { admins: { some: { userId: adminId } } };
-  const chats = await db.guardChat.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 50, include: { rules: true } });
+  const chats = await db.guardChat.findMany({ where: scope, orderBy: { createdAt: "desc" }, take: 50, include: { rules: true, texts: true } });
   const chat = requestedChat
-    ? await db.guardChat.findFirst({ where: { id: requestedChat, ...scope }, include: { rules: true } })
+    ? await db.guardChat.findFirst({ where: { id: requestedChat, ...scope }, include: { rules: true, texts: true } })
     : chats[0] ?? null;
   const empty: DashboardData = { chats, chat, unavailableChat: Boolean(requestedChat && !chat), counts: { members: 0, posts: 0, alerts: 0 }, members: [], posts: [], alerts: [], events: [] };
   if (!chat) return empty;
@@ -83,7 +84,7 @@ export async function loadDashboard(adminId: string, requestedChat?: string): Pr
   };
 }
 export function sampleDashboard(): DashboardData {
-  const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, adminsExempt: true, minWords: 0, maxWords: 0, timezone: "Asia/Tehran", discussionChatId: "-100000000002", rules: [
+  const chat: Chat = { id: "-100000000001", title: "کانال نمونهٔ گفتگو", type: "channel", username: null, active: true, waitHours: 24, verification: true, commentGate: true, adminsExempt: true, minWords: 0, maxWords: 0, timezone: "Asia/Tehran", silentBotMessages: true, texts: [{ key: "welcome", body: "*{user}* عزیز، به {group} خوش آمدی." }], discussionChatId: "-100000000002", rules: [
     { rule: "links", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 0, limitWindowMinutes: 0 },
     { rule: "media", enabled: true, startMinute: 1320, endMinute: 360, penalty: "SILENCE", muteMinutes: 120, limitCount: 0, limitWindowMinutes: 0 },
     { rule: "message_rate", enabled: true, startMinute: null, endMinute: null, penalty: "DELETE", muteMinutes: 60, limitCount: 10, limitWindowMinutes: 5 },

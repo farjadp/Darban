@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     chatAdmin: { findUnique: vi.fn(), upsert: vi.fn() },
     guardChat: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     guardChatRule: { upsert: vi.fn() },
+    guardChatText: { upsert: vi.fn(), deleteMany: vi.fn() },
     guardEvent: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     guardPost: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     guardUser: { upsert: vi.fn() },
@@ -284,7 +285,7 @@ describe("defensive admin operations", () => {
     }, actorId);
     expect(mocks.db.guardChat.update).toHaveBeenCalledWith({
       where: { id: chatId },
-      data: { waitHours: 0, verification: false, commentGate: true, adminsExempt: false, minWords: 3, maxWords: 0, timezone: "Asia/Tehran", discussionChatId: null },
+      data: { waitHours: 0, verification: false, commentGate: true, adminsExempt: false, minWords: 3, maxWords: 0, timezone: "Asia/Tehran", silentBotMessages: true, discussionChatId: null },
     });
     expect(mocks.db.guardChatRule.upsert).toHaveBeenCalledWith({
       where: { chatId_rule: { chatId, rule: "links" } },

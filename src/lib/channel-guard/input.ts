@@ -72,6 +72,11 @@ export const adminInput = z.discriminatedUnion("operation", [
       limitCount: z.number().int().min(0).max(10000).default(0),
       limitWindowMinutes: z.number().int().min(0).max(10080).default(0),
     })).max(RULE_KEYS.length).default([]),
+    silentBotMessages: z.boolean().default(true),
+    texts: z.array(z.object({
+      key: z.enum(["welcome", "rules"]),
+      body: z.string().max(1024),
+    })).max(2).default([]),
     discussionChatId: chatId.nullable(),
   }),
   z.object({ operation: z.literal("review"), chatId, alertId: z.string().min(1).max(64) }),

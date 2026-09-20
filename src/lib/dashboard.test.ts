@@ -20,7 +20,7 @@ import { candidateIds, dashboardHref, loadDashboard, parseView, sampleDashboard,
 const adminId = "11";
 const chat: Chat = {
   id: "-100123", title: "کانال آزمون", type: "channel", username: null, active: true,
-  waitHours: 24, verification: true, commentGate: false, adminsExempt: true, minWords: 0, maxWords: 0, timezone: "UTC", discussionChatId: null, rules: [],
+  waitHours: 24, verification: true, commentGate: false, adminsExempt: true, minWords: 0, maxWords: 0, timezone: "UTC", silentBotMessages: true, discussionChatId: null, rules: [], texts: [],
 };
 const scope = { admins: { some: { userId: adminId } } };
 const where = { chatId: chat.id, chat: scope };
@@ -55,8 +55,8 @@ afterEach(() => vi.unstubAllEnvs());
 describe("dashboard authorization and scope", () => {
   it("scopes the selected chat and all private lists and counts to the administrator", async () => {
     await loadDashboard(adminId, chat.id);
-    expect(mocks.db.guardChat.findMany).toHaveBeenCalledWith({ where: scope, orderBy: { createdAt: "desc" }, take: 50, include: { rules: true } });
-    expect(mocks.db.guardChat.findFirst).toHaveBeenCalledWith({ where: { id: chat.id, ...scope }, include: { rules: true } });
+    expect(mocks.db.guardChat.findMany).toHaveBeenCalledWith({ where: scope, orderBy: { createdAt: "desc" }, take: 50, include: { rules: true, texts: true } });
+    expect(mocks.db.guardChat.findFirst).toHaveBeenCalledWith({ where: { id: chat.id, ...scope }, include: { rules: true, texts: true } });
     expect(mocks.getMember).toHaveBeenCalledWith(chat.id, adminId);
     expect(mocks.db.guardMember.findMany).toHaveBeenCalledWith({
       where, orderBy: [{ joinedAt: { sort: "desc", nulls: "last" } }, { userId: "desc" }], take: 50, include: { user: true },
@@ -78,7 +78,7 @@ describe("dashboard authorization and scope", () => {
   it("does not load another chat or fall back to an owned chat for an unauthorized selection", async () => {
     mocks.db.guardChat.findFirst.mockResolvedValue(null);
     const result = await loadDashboard(adminId, "-100999");
-    expect(mocks.db.guardChat.findFirst).toHaveBeenCalledWith({ where: { id: "-100999", ...scope }, include: { rules: true } });
+    expect(mocks.db.guardChat.findFirst).toHaveBeenCalledWith({ where: { id: "-100999", ...scope }, include: { rules: true, texts: true } });
     expect(result.chat).toBeNull();
     expect(result.unavailableChat).toBe(true);
     expect(result.members).toEqual([]);

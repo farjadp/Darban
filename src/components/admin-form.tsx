@@ -78,6 +78,11 @@ export function AdminForm(props: Props) {
         limitCount: Number(fields.get(`count_${key}`)) || 0,
         limitWindowMinutes: Number(fields.get(`per_${key}`)) || 0,
       })),
+      silentBotMessages: fields.get("silentBotMessages") === "on",
+      texts: [
+        { key: "welcome", body: String(fields.get("text_welcome") ?? "") },
+        { key: "rules", body: String(fields.get("text_rules") ?? "") },
+      ],
       discussionChatId: String(fields.get("discussionChatId") ?? "").trim() || null,
     };
     if (props.operation === "review") payload.alertId = props.alertId;
@@ -180,6 +185,10 @@ export function AdminForm(props: Props) {
             );
           })}
         </fieldset>
+        <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="silentBotMessages" defaultChecked={props.chat.silentBotMessages} className="size-5 shrink-0 accent-forest" />{c.silentBotMessagesLabel}</label>
+        <div className="space-y-2"><label htmlFor={`${id}-welcome`} className="block text-sm font-medium">{c.welcomeLabel}</label><textarea id={`${id}-welcome`} name="text_welcome" rows={3} maxLength={1024} defaultValue={props.chat.texts.find(text => text.key === "welcome")?.body ?? ""} className={inputClass} aria-describedby={`${id}-text-help`} /></div>
+        <div className="space-y-2"><label htmlFor={`${id}-rulestext`} className="block text-sm font-medium">{c.rulesTextLabel}</label><textarea id={`${id}-rulestext`} name="text_rules" rows={4} maxLength={1024} defaultValue={props.chat.texts.find(text => text.key === "rules")?.body ?? ""} className={inputClass} aria-describedby={`${id}-text-help`} /></div>
+        <p id={`${id}-text-help`} className="text-sm leading-7 text-muted">{c.textHelp}</p>
         <div className="max-w-xs space-y-2"><label htmlFor={`${id}-timezone`} className="block text-sm font-medium">{c.timezoneLabel}</label><input id={`${id}-timezone`} name="timezone" dir="ltr" defaultValue={props.chat.timezone} placeholder="Asia/Tehran" className={inputClass} aria-describedby={`${id}-timezone-help`} /><p id={`${id}-timezone-help`} className="text-sm text-muted">{c.timezoneHelp}</p></div>
         <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="adminsExempt" defaultChecked={props.chat.adminsExempt} className="size-5 shrink-0 accent-forest" />{c.adminsExemptLabel}</label>
         <div className="flex flex-wrap gap-5">
